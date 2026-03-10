@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CrowdSec Central API</title>
+<script src="echarts.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #f0f2f5; color: #222; }
+
+  /* Header */
+  header { background: #1a1a2e; color: #fff; padding: 0 24px; display: flex; align-items: center; gap: 14px; height: 54px; position: sticky; top: 0; z-index: 50; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+  header h1 { font-size: 17px; margin: 0; font-weight: 700; letter-spacing: -.3px; }
+  .logo { width: 28px; height: 28px; background: #e63946; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+  #header-user { font-size: 12px; color: #aaa; }
+  header .spacer { flex: 1; }
+
+  /* Nav */
+  nav { background: #16213e; display: flex; gap: 0; padding: 0 20px; border-bottom: 1px solid #0f3460; }
+  nav button { background: none; border: none; color: #8892a4; padding: 11px 16px; cursor: pointer; font-size: 13px; font-weight: 500; border-bottom: 3px solid transparent; transition: color .15s; white-space: nowrap; }
+  nav button:hover { color: #fff; }
+  nav button.active { color: #e63946; border-bottom-color: #e63946; }
+
+  /* Layout */
+  main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* Stat cards */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat-card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.07); display: flex; flex-direction: column; gap: 6px; }
+  .stat-card .label { font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: .5px; }
+  .stat-card .value { font-size: 32px; font-weight: 700; line-height: 1; }
+  .stat-card .sub { font-size: 12px; color: #aaa; }
+  .stat-card.red    .value { color: #e63946; }
+  .stat-card.green  .value { color: #2a9d5c; }
+  .stat-card.blue   .value { color: #2f7ff5; }
+  .stat-card.orange .value { color: #f4a261; }
+
+  /* Charts row */
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  @media (max-width: 800px) { .chart-grid { grid-template-columns: 1fr; } }
+  .chart-card { background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.07); padding: 20px; }
+  .chart-card h3 { margin: 0 0 16px; font-size: 14px; font-weight: 600; color: #444; }
+
+  /* Map */
+  .map-card { background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.07); padding: 20px; margin-bottom: 24px; }
+  .map-card h3 { margin: 0 0 16px; font-size: 14px; font-weight: 600; color: #444; }
+  #worldmap { width: 100%; height: 460px; }
+
+  /* Generic card */
+  .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.07); padding: 20px; margin-bottom: 20px; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .card-header h2 { margin: 0; font-size: 15px; font-weight: 600; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; background: #f8f9fa; border-bottom: 2px solid #e9ecef; font-weight: 600; color: #555; }
+  td { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafafa; }
+
+  /* Badges */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-green  { background: #d4edda; color: #155724; }
+  .badge-yellow { background: #fff3cd; color: #856404; }
+  .badge-red    { background: #f8d7da; color: #721c24; }
+  .badge-blue   { background: #cce5ff; color: #004085; }
+  .badge-gray   { background: #e2e3e5; color: #383d41; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; transition: opacity .15s; }
+  .btn:hover { opacity: .85; }
+  .btn-primary   { background: #e63946; color: #fff; }
+  .btn-secondary { background: #6c757d; color: #fff; }
+  .btn-danger    { background: #dc3545; color: #fff; }
+  .btn-warn      { background: #ffc107; color: #000; }
+  .btn-sm { padding: 3px 10px; font-size: 12px; }
+  .actions { display: flex; gap: 6px; }
+  .empty { text-align: center; color: #aaa; padding: 32px; font-size: 14px; }
+
+  /* Modal */
+  .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100; align-items: center; justify-content: center; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: #fff; border-radius: 10px; padding: 28px; width: 480px; max-width: 95vw; box-shadow: 0 8px 32px rgba(0,0,0,.18); }
+  .modal h3 { margin: 0 0 20px; font-size: 17px; }
+  .modal .close { float: right; background: none; border: none; font-size: 22px; cursor: pointer; color: #888; margin-top: -4px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 4px; }
+  .field input, .field select { width: 100%; padding: 8px 10px; border: 1px solid #ced4da; border-radius: 6px; font-size: 13px; }
+  .field input:focus, .field select:focus { outline: none; border-color: #e63946; box-shadow: 0 0 0 3px rgba(230,57,70,.12); }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+  /* Login */
+  #login-overlay { display: none; position: fixed; inset: 0; background: linear-gradient(135deg, #1a1a2e, #16213e); z-index: 200; align-items: center; justify-content: center; }
+  #login-overlay.open { display: flex; }
+  #login-box { background: #fff; border-radius: 12px; padding: 36px; width: 360px; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+  #login-box h2 { margin: 0 0 8px; font-size: 20px; }
+  #login-box p { color: #888; font-size: 13px; margin: 0 0 24px; }
+  #login-error { color: #dc3545; font-size: 13px; margin-bottom: 10px; min-height: 18px; }
+
+  .mono { font-family: monospace; font-size: 12px; }
+  .text-muted { color: #888; font-size: 12px; }
+  .tag { display: inline-block; background: #e9ecef; border-radius: 4px; padding: 1px 6px; font-size: 11px; margin: 1px; }
+  .refresh-btn { background: none; border: 1px solid #ddd; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: #666; }
+  .refresh-btn:hover { background: #f5f5f5; }
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="login-overlay" class="open">
+  <div id="login-box">
+    <h2>CrowdSec Central API</h2>
+    <p>Sign in to the admin dashboard</p>
+    <div id="login-error"></div>
+    <div class="field"><label>Username</label><input id="login-user" value="admin" /></div>
+    <div class="field"><label>Password</label><input id="login-pass" type="password" /></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px" onclick="doLogin()">Sign in</button>
+  </div>
+</div>
+
+<header>
+  <div class="logo">&#x1F6E1;</div>
+  <h1>CrowdSec Central API</h1>
+  <span id="header-user"></span>
+  <div class="spacer"></div>
+  <button class="btn btn-secondary btn-sm" onclick="logout()">Sign out</button>
+</header>
+
+<nav>
+  <button class="active" onclick="showPage('dashboard')">Dashboard</button>
+  <button onclick="showPage('machines')">Machines</button>
+  <button onclick="showPage('decisions')">Decisions</button>
+  <button onclick="showPage('allowlists')">Allowlists</button>
+  <button onclick="showPage('enrollment')">Enrollment Keys</button>
+  <button onclick="showPage('upstream')">Upstream</button>
+</nav>
+
+<main>
+
+  <!-- Dashboard -->
+  <div id="page-dashboard" class="page active">
+    <div class="stat-grid" id="stat-cards">
+      <div class="stat-card blue">  <div class="label">Machines</div><div class="value" id="s-machines">—</div><div class="sub" id="s-machines-sub"></div></div>
+      <div class="stat-card red">   <div class="label">Active Decisions</div><div class="value" id="s-decisions">—</div><div class="sub" id="s-decisions-sub"></div></div>
+      <div class="stat-card orange"><div class="label">Signals (24h)</div><div class="value" id="s-signals">—</div><div class="sub">last 24 hours</div></div>
+      <div class="stat-card green"> <div class="label">Upstream Decisions</div><div class="value" id="s-upstream">—</div><div class="sub">from api.crowdsec.net</div></div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="chart-card">
+        <h3>Decisions by Origin</h3>
+        <div id="chart-origin" style="height:220px"></div>
+      </div>
+      <div class="chart-card">
+        <h3>Decisions by Type</h3>
+        <div id="chart-type" style="height:220px"></div>
+      </div>
+    </div>
+
+    <div class="map-card">
+      <h3>Attack Origins — Signals by Country (last 30 days) <button class="refresh-btn" onclick="loadDashboard()" style="margin-left:8px">&#x21bb; Refresh</button></h3>
+      <div id="worldmap"></div>
+    </div>
+  </div>
+
+  <!-- Machines -->
+  <div id="page-machines" class="page">
+    <div class="card">
+      <div class="card-header">
+        <h2>Machines</h2>
+        <span class="text-muted" id="machines-count"></span>
+      </div>
+      <table>
+        <thead><tr><th>Machine ID</th><th>Status</th><th>Name / Tags</th><th>IP</th><th>Last Seen</th><th>Actions</th></tr></thead>
+        <tbody id="machines-body"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Decisions -->
+  <div id="page-decisions" class="page">
+    <div class="card">
+      <div class="card-header">
+        <h2>Decisions</h2>
+        <button class="btn btn-primary btn-sm" onclick="openAddDecision()">+ Add Decision</button>
+      </div>
+      <table>
+        <thead><tr><th>Value</th><th>Scope</th><th>Type</th><th>Origin</th><th>Scenario</th><th>Expires</th><th>Actions</th></tr></thead>
+        <tbody id="decisions-body"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Allowlists -->
+  <div id="page-allowlists" class="page">
+    <div class="card">
+      <div class="card-header">
+        <h2>Allowlists</h2>
+        <button class="btn btn-primary btn-sm" onclick="openAddAllowlist()">+ New Allowlist</button>
+      </div>
+      <table>
+        <thead><tr><th>Name</th><th>Label</th><th>Description</th><th>Actions</th></tr></thead>
+        <tbody id="allowlists-body"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div id="allowlist-entries-card" class="card" style="display:none">
+      <div class="card-header">
+        <h2>Entries — <span id="allowlist-entries-name"></span></h2>
+        <button class="btn btn-primary btn-sm" onclick="openAddEntry()">+ Add Entry</button>
+      </div>
+      <table>
+        <thead><tr><th>Scope</th><th>Value</th><th>Comment</th></tr></thead>
+        <tbody id="allowlist-entries-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Enrollment Keys -->
+  <div id="page-enrollment" class="page">
+    <div class="card">
+      <div class="card-header">
+        <h2>Enrollment Keys</h2>
+        <button class="btn btn-primary btn-sm" onclick="openAddKey()">+ Generate Key</button>
+      </div>
+      <table>
+        <thead><tr><th>Key</th><th>Description</th><th>Tags</th><th>Uses</th><th>Expires</th><th>Actions</th></tr></thead>
+        <tbody id="enrollment-body"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Upstream -->
+  <div id="page-upstream" class="page">
+    <div class="card">
+      <div class="card-header"><h2>Upstream CAPI Status</h2></div>
+      <div id="upstream-content" style="font-size:14px;line-height:2">Loading…</div>
+    </div>
+  </div>
+
+</main>
+
+<!-- Modal: Add Decision -->
+<div id="modal-decision" class="modal-backdrop">
+  <div class="modal">
+    <button class="close" onclick="closeModal('modal-decision')">&times;</button>
+    <h3>Add Manual Decision</h3>
+    <div class="field"><label>Type</label>
+      <select id="dec-type"><option value="ban">ban</option><option value="captcha">captcha</option></select>
+    </div>
+    <div class="field"><label>Scope</label>
+      <select id="dec-scope"><option value="Ip">Ip</option><option value="Range">Range</option><option value="Country">Country</option></select>
+    </div>
+    <div class="field"><label>Value</label><input id="dec-value" placeholder="e.g. 1.2.3.4 or 1.2.3.0/24" /></div>
+    <div class="field"><label>Duration (e.g. 24h, 7d)</label><input id="dec-duration" value="24h" /></div>
+    <div class="field"><label>Scenario (optional)</label><input id="dec-scenario" placeholder="crowdsecurity/http-bf" /></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-decision')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitDecision()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Add Allowlist -->
+<div id="modal-allowlist" class="modal-backdrop">
+  <div class="modal">
+    <button class="close" onclick="closeModal('modal-allowlist')">&times;</button>
+    <h3>New Allowlist</h3>
+    <div class="field"><label>Name (unique identifier)</label><input id="al-name" placeholder="my-trusted-ips" /></div>
+    <div class="field"><label>Label (display name)</label><input id="al-label" placeholder="Trusted IPs" /></div>
+    <div class="field"><label>Description</label><input id="al-desc" placeholder="Optional description" /></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-allowlist')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAllowlist()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Add Entry -->
+<div id="modal-entry" class="modal-backdrop">
+  <div class="modal">
+    <button class="close" onclick="closeModal('modal-entry')">&times;</button>
+    <h3>Add Entry</h3>
+    <div class="field"><label>Scope</label>
+      <select id="entry-scope"><option value="Ip">Ip</option><option value="Range">Range</option><option value="Country">Country</option></select>
+    </div>
+    <div class="field"><label>Value</label><input id="entry-value" placeholder="e.g. 10.0.0.1" /></div>
+    <div class="field"><label>Comment</label><input id="entry-comment" placeholder="Optional" /></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-entry')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEntry()">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Generate Enrollment Key -->
+<div id="modal-key" class="modal-backdrop">
+  <div class="modal">
+    <button class="close" onclick="closeModal('modal-key')">&times;</button>
+    <h3>Generate Enrollment Key</h3>
+    <div class="field"><label>Description</label><input id="key-desc" placeholder="e.g. datacenter-1 agents" /></div>
+    <div class="field"><label>Tags (comma-separated)</label><input id="key-tags" placeholder="prod, dc1" /></div>
+    <div class="field"><label>Max Uses (blank = unlimited)</label><input id="key-max" type="number" min="1" placeholder="unlimited" /></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-key')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitKey()">Generate</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

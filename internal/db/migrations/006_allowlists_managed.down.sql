@@ -1,0 +1,1 @@
+ALTER TABLE allowlists DROP COLUMN IF EXISTS managed;

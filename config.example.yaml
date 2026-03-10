@@ -1,0 +1,33 @@
+server:
+  listen: "0.0.0.0:8080"
+  jwt_ttl: "24h"
+
+admin:
+  username: "admin"
+  password: ""       # leave empty to auto-generate on startup (printed to logs)
+  api_key: ""
+
+allowlists:
+  file: ""           # path to allowlists.yaml for allowlists-as-code (e.g. ./allowlists.yaml)
+
+database:
+  dsn: "postgresql://capi:secret@localhost:5432/capi?sslmode=disable"
+
+upstream:
+  enabled: true
+  base_url: "https://api.crowdsec.net"
+  machine_id: ""
+  password: ""
+  sync_interval: "1h"
+  push_signals: false
+
+decisions:
+  default_duration: "24h"
+  sources:
+    local_signals: true
+    upstream_capi: true
+    manual: true
+
+log:
+  level: "info"
+  format: "json"

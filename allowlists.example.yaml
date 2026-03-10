@@ -1,0 +1,36 @@
+allowlists:
+  - name: trusted-networks
+    label: "Trusted Networks"
+    description: "Internal and office networks that should never be banned"
+    entries:
+      - scope: Range
+        value: "10.0.0.0/8"
+        comment: "RFC1918 private"
+      - scope: Range
+        value: "172.16.0.0/12"
+        comment: "RFC1918 private"
+      - scope: Range
+        value: "192.168.0.0/16"
+        comment: "RFC1918 private"
+      - scope: Ip
+        value: "203.0.113.10"
+        comment: "Office egress IP"
+
+  - name: trusted-countries
+    label: "Trusted Countries"
+    description: "Countries from which we never ban traffic"
+    entries:
+      - scope: Country
+        value: "FR"
+        comment: "France"
+      - scope: Country
+        value: "DE"
+        comment: "Germany"
+
+  - name: monitoring-agents
+    label: "Monitoring Agents"
+    description: "IPs belonging to uptime/synthetic monitoring services"
+    entries:
+      - scope: Ip
+        value: "1.2.3.4"
+        comment: "Pingdom probe"

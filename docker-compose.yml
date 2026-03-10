@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: capi
+      POSTGRES_USER: capi
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U capi"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  capi:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      CAPI_DATABASE_DSN: "postgresql://capi:secret@postgres:5432/capi?sslmode=disable"
+      CAPI_SERVER_LISTEN: "0.0.0.0:8080"
+      CAPI_LOG_FORMAT: "pretty"
+    volumes:
+      - ./config.example.yaml:/config.yaml:ro
+    command: ["serve", "-c", "/config.yaml"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
