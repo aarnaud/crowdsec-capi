@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/aarnaud/crowdsec-central-api/cmd/register"
 	"github.com/aarnaud/crowdsec-central-api/cmd/serve"
 )
 
@@ -15,6 +16,7 @@ func main() {
 		Short: "CrowdSec Self-Hosted Central API",
 	}
 	root.AddCommand(serve.Command())
+	root.AddCommand(register.NewCommand())
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

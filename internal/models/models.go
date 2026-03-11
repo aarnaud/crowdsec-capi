@@ -111,6 +111,13 @@ type LoginRequest struct {
 	} `json:"scenarios"`
 }
 
+// V3LoginRequest is the v3 variant where scenarios is a flat list of strings.
+type V3LoginRequest struct {
+	MachineID string   `json:"machine_id" validate:"required"`
+	Password  string   `json:"password" validate:"required"`
+	Scenarios []string `json:"scenarios"`
+}
+
 type LoginResponse struct {
 	Code   int    `json:"code"`
 	Expire string `json:"expire"`
@@ -183,4 +190,27 @@ type DecisionWire struct {
 type DecisionStreamResponse struct {
 	New     []DecisionWire `json:"new"`
 	Deleted []DecisionWire `json:"deleted"`
+}
+
+// V3 decisions stream response — decisions grouped by scenario+scope
+
+type V3DecisionNew struct {
+	Duration string `json:"duration"`
+	Value    string `json:"value"`
+}
+
+type V3DecisionNewGroup struct {
+	Scenario  string          `json:"scenario"`
+	Scope     string          `json:"scope"`
+	Decisions []V3DecisionNew `json:"decisions"`
+}
+
+type V3DecisionDeletedGroup struct {
+	Scope     string   `json:"scope"`
+	Decisions []string `json:"decisions"`
+}
+
+type V3DecisionStreamResponse struct {
+	New     []V3DecisionNewGroup     `json:"new"`
+	Deleted []V3DecisionDeletedGroup `json:"deleted"`
 }

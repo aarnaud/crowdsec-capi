@@ -1,7 +1,9 @@
 package api
 
 import (
+	"compress/gzip"
 	"crypto/subtle"
+	"io"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -71,6 +73,37 @@ func rateLimitMiddleware(rl *ipRateLimiter) func(http.Handler) http.Handler {
 	}
 }
 
+// gunzipMiddleware transparently decompresses gzip-encoded request bodies.
+// The v3 CrowdSec agent compresses request bodies with gzip.
+func gunzipMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			gr, err := gzip.NewReader(r.Body)
+			if err != nil {
+				http.Error(w, `{"message":"invalid gzip body"}`, http.StatusBadRequest)
+				return
+			}
+			defer gr.Close()
+			r.Body = io.NopCloser(gr)
+			r.Header.Del("Content-Encoding")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// apiStripSlashes removes trailing slashes on /v2/ and /v3/ API paths only,
+// leaving UI and other routes unaffected.
+func apiStripSlashes(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(r.URL.Path) > 4 &&
+			r.URL.Path[len(r.URL.Path)-1] == '/' &&
+			(strings.HasPrefix(r.URL.Path, "/v2/") || strings.HasPrefix(r.URL.Path, "/v3/")) {
+			r.URL.Path = r.URL.Path[:len(r.URL.Path)-1]
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -92,9 +125,11 @@ func NewRouter(
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	r.Use(apiStripSlashes)
 	r.Use(chiZerologLogger)
 	r.Use(middleware.Recoverer)
 	r.Use(securityHeadersMiddleware)
+	r.Use(gunzipMiddleware)
 	// Limit request bodies to 4 MB globally (signals handler is the largest consumer)
 	r.Use(middleware.RequestSize(4 << 20))
 
@@ -131,10 +166,12 @@ func NewRouter(
 	r.Get("/auth/callback", authHandlers.CallbackHandler())
 	r.Get("/auth/logout", authHandlers.LogoutHandler())
 
-	// v2 public endpoints — rate-limited: 10 requests per minute per IP
+	// v2/v3 public endpoints — rate-limited: 10 requests per minute per IP
 	authLimiter := newIPRateLimiter(10, time.Minute)
-	r.With(rateLimitMiddleware(authLimiter)).Post("/v2/watchers", v2.RegisterHandler(pool, jwtMgr))
-	r.With(rateLimitMiddleware(authLimiter)).Post("/v2/watchers/login", v2.LoginHandler(pool, jwtMgr))
+	//r.With(rateLimitMiddleware(authLimiter)).Post("/v2/watchers", v2.RegisterHandler(pool, jwtMgr))
+	//r.With(rateLimitMiddleware(authLimiter)).Post("/v2/watchers/login", v2.LoginHandler(pool, jwtMgr))
+	r.With(rateLimitMiddleware(authLimiter)).Post("/v3/watchers", v2.RegisterHandler(pool, jwtMgr))
+	r.With(rateLimitMiddleware(authLimiter)).Post("/v3/watchers/login", v2.V3LoginHandler(pool, jwtMgr))
 
 	// Per-machine-ID rate limiter for signal batches: 60 per minute
 	signalLimiter := newIPRateLimiter(60, time.Minute)
@@ -150,22 +187,29 @@ func NewRouter(
 		})
 	}
 
-	// v2 authenticated endpoints
+	// authenticated endpoints
 	r.Group(func(r chi.Router) {
 		r.Use(auth.JWTMiddleware(jwtMgr))
-		r.Post("/v2/watchers/enroll", v2.EnrollHandler(pool))
-		r.Post("/v2/watchers/reset", v2.ResetPasswordHandler(pool))
-		r.Delete("/v2/watchers/self", v2.DeleteSelfHandler(pool))
-		r.With(signalRateLimitMiddleware).Post("/v2/signals", v2.SignalsHandler(signalSvc))
+
+		// shared routes (same handler for v2 and v3)
+		for _, p := range []string{"/v2", "/v3"} {
+			r.Post(p+"/watchers/enroll", v2.EnrollHandler(pool))
+			r.Post(p+"/watchers/reset", v2.ResetPasswordHandler(pool))
+			r.Delete(p+"/watchers/self", v2.DeleteSelfHandler(pool))
+			r.With(signalRateLimitMiddleware).Post(p+"/signals", v2.SignalsHandler(signalSvc))
+			r.Post(p+"/decisions/sync", v2.DecisionSyncHandler(pool))
+			r.Post(p+"/metrics", v2.MetricsHandler(pool))
+			r.Post(p+"/usage-metrics", v2.MetricsHandler(pool))
+			r.Get(p+"/heartbeat", v2.HeartbeatHandler(pool))
+			r.Get(p+"/allowlists", v2.AllowlistsGetHandler(pool))
+			r.Head(p+"/allowlists", v2.AllowlistsHeadHandler(pool))
+			r.Post(p+"/allowlists/{name}", v2.AllowlistsPostHandler(pool))
+			r.Get(p+"/papi/v1/decisions", v2.PAPIHandler())
+		}
+
+		// version-specific decision stream handlers
 		r.Get("/v2/decisions/stream", v2.DecisionStreamHandler(pool))
-		r.Post("/v2/decisions/sync", v2.DecisionSyncHandler(pool))
-		r.Post("/v2/metrics", v2.MetricsHandler(pool))
-		r.Post("/v2/usage-metrics", v2.MetricsHandler(pool))
-		r.Get("/v2/heartbeat", v2.HeartbeatHandler(pool))
-		r.Get("/v2/allowlists", v2.AllowlistsGetHandler(pool))
-		r.Head("/v2/allowlists", v2.AllowlistsHeadHandler(pool))
-		r.Post("/v2/allowlists/{name}", v2.AllowlistsPostHandler(pool))
-		r.Get("/v2/papi/v1/decisions", v2.PAPIHandler())
+		r.Get("/v3/decisions/stream", v2.V3DecisionStreamHandler(pool))
 	})
 
 	// Admin endpoints

@@ -20,15 +20,41 @@ The server starts on `http://localhost:8080`. The admin password is auto-generat
 
 ### Point a CrowdSec agent at this server
 
-Edit `/etc/crowdsec/online_api_credentials.yaml` on each agent:
+Because `cscli capi register` is hardcoded to `api.crowdsec.net`, this server ships a `register` command that handles the full registration and enrollment flow and writes `/etc/crowdsec/online_api_credentials.yaml` directly.
 
-```yaml
-url: http://<your-server>:8080
-login: <machine_id>
-password: <password>
+**1. Create an enrollment key** in the admin UI (`/ui` → Enrollment Keys) or via the API:
+
+```bash
+curl -u admin:password -X POST http://localhost:8080/admin/enrollment-keys \
+  -H 'Content-Type: application/json' \
+  -d '{"description": "my-server"}'
 ```
 
-Then re-register: `sudo cscli capi register`
+**2. Run `register` on the agent machine:**
+
+```bash
+# Via flags
+crowdsec-capi register \
+  --url http://<your-server>:8080 \
+  --enrollment-key <key> \
+  --name my-server \
+  --output /etc/crowdsec/online_api_credentials.yaml
+
+# Via environment variables (suitable for containers and CI)
+CAPI_URL=http://<your-server>:8080 \
+CAPI_ENROLLMENT_KEY=<key> \
+CAPI_MACHINE_NAME=my-server \
+CAPI_OUTPUT=/etc/crowdsec/online_api_credentials.yaml \
+crowdsec-capi register
+```
+
+Add `--insecure` to skip TLS certificate verification for self-signed certs.
+
+**3. Restart the CrowdSec agent:**
+
+```bash
+systemctl restart crowdsec
+```
 
 ## Configuration
 
@@ -138,6 +164,13 @@ Dashboard available at `http://localhost:8080/ui`:
 - **Allowlists** — manage allowlists and entries
 - **Enrollment Keys** — generate and revoke enrollment keys
 - **Upstream** — view upstream CAPI sync status
+
+## Commands
+
+| Command | Description |
+|---|---|
+| `crowdsec-capi serve -c config.yaml` | Start the API server |
+| `crowdsec-capi register --url ... --enrollment-key ...` | Register and enroll an agent, write credentials file |
 
 ## Building
 

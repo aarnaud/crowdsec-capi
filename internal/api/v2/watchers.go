@@ -46,7 +46,7 @@ func RegisterHandler(pool dbPool, jwtMgr *auth.JWTManager) http.HandlerFunc {
 			return
 		}
 
-		ip := r.RemoteAddr
+		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			candidate := strings.TrimSpace(strings.SplitN(xff, ",", 2)[0])
 			if net.ParseIP(candidate) != nil {
@@ -88,7 +88,54 @@ func LoginHandler(pool dbPool, jwtMgr *auth.JWTManager) http.HandlerFunc {
 			return
 		}
 
-		// Update scenarios if provided
+		if len(req.Scenarios) > 0 {
+			scenariosJSON, _ := json.Marshal(req.Scenarios)
+			_ = queries.UpdateMachineScenarios(r.Context(), pool, req.MachineID, scenariosJSON)
+		}
+
+		_ = queries.UpdateMachineLastSeen(r.Context(), pool, req.MachineID)
+
+		token, exp, err := jwtMgr.Sign(req.MachineID)
+		if err != nil {
+			log.Error().Err(err).Msg("signing JWT")
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		writeJSON(w, http.StatusOK, models.LoginResponse{
+			Code:   http.StatusOK,
+			Expire: exp.Format("2006-01-02T15:04:05Z07:00"),
+			Token:  token,
+		})
+	}
+}
+
+// V3LoginHandler handles POST /v3/watchers/login
+// Same as LoginHandler except scenarios is a flat []string per the v3 API spec.
+func V3LoginHandler(pool dbPool, jwtMgr *auth.JWTManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req models.V3LoginRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		machine, err := queries.GetMachineByID(r.Context(), pool, req.MachineID)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "invalid credentials")
+			return
+		}
+
+		if !auth.CheckPassword(req.Password, machine.PasswordHash) {
+			writeError(w, http.StatusUnauthorized, "invalid credentials")
+			return
+		}
+
+		if machine.Status == "blocked" {
+			writeError(w, http.StatusForbidden, "machine is blocked")
+			return
+		}
+
 		if len(req.Scenarios) > 0 {
 			scenariosJSON, _ := json.Marshal(req.Scenarios)
 			_ = queries.UpdateMachineScenarios(r.Context(), pool, req.MachineID, scenariosJSON)
