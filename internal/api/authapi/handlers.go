@@ -120,7 +120,7 @@ func (h *Handlers) CallbackHandler() http.HandlerFunc {
 			SameSite: http.SameSiteLaxMode,
 			Path:     "/",
 		})
-		http.Redirect(w, r, "/ui", http.StatusFound)
+		http.Redirect(w, r, "/ui/", http.StatusFound)
 	}
 }
 
@@ -136,7 +136,7 @@ func (h *Handlers) LogoutHandler() http.HandlerFunc {
 			SameSite: http.SameSiteLaxMode,
 			Path:     "/",
 		})
-		http.Redirect(w, r, "/ui", http.StatusFound)
+		http.Redirect(w, r, "/ui/", http.StatusFound)
 	}
 }
 
