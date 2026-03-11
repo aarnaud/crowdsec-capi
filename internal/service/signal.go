@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog/log"
 
 	"github.com/aarnaud/crowdsec-central-api/internal/db/queries"
 	"github.com/aarnaud/crowdsec-central-api/internal/models"
@@ -66,9 +67,33 @@ func (s *SignalService) ProcessSignals(ctx context.Context, machineID string, si
 			}
 		}
 
-		srcIP := sig.Source.IP
-		if srcIP == "" {
-			srcIP = sig.Source.Value
+		// Only store source_ip when it's actually an IP (not username/country/etc.)
+		var sourceIP, sourceRange *string
+		switch sig.Source.Scope {
+		case "Ip", "ip":
+			if sig.Source.IP != "" {
+				sourceIP = nilStr(sig.Source.IP)
+			} else {
+				sourceIP = nilStr(sig.Source.Value)
+			}
+		case "Range", "range":
+			sourceRange = nilStr(sig.Source.Range)
+			if sourceRange == nil {
+				sourceRange = nilStr(sig.Source.Value)
+			}
+		}
+
+		var asNumber *int
+		if sig.Source.AsNumber != 0 {
+			n := sig.Source.AsNumber
+			asNumber = &n
+		}
+		var lat, lon *float64
+		if sig.Source.Latitude != 0 {
+			lat = &sig.Source.Latitude
+		}
+		if sig.Source.Longitude != 0 {
+			lon = &sig.Source.Longitude
 		}
 
 		dbSignal := &models.Signal{
@@ -78,14 +103,20 @@ func (s *SignalService) ProcessSignals(ctx context.Context, machineID string, si
 			ScenarioVersion: nilStr(sig.ScenarioVersion),
 			SourceScope:     nilStr(sig.Source.Scope),
 			SourceValue:     nilStr(sig.Source.Value),
-			SourceIP:        nilStr(srcIP),
+			SourceIP:        sourceIP,
+			SourceRange:     sourceRange,
+			SourceAsName:    nilStr(sig.Source.AsName),
+			SourceAsNumber:  asNumber,
+			SourceCountry:   nilStr(sig.Source.Country),
+			SourceLatitude:  lat,
+			SourceLongitude: lon,
 			Labels:          labelsJSON,
 			StartAt:         startAt,
 			StopAt:          stopAt,
 			AlertCount:      sig.AlertCount,
 		}
 		if err := queries.CreateSignal(ctx, s.db, dbSignal); err != nil {
-			// Non-fatal, continue processing
+			log.Error().Err(err).Str("machine_id", machineID).Str("scenario", sig.Scenario).Msg("storing signal")
 			continue
 		}
 

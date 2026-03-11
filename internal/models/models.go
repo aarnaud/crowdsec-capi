@@ -47,6 +47,12 @@ type Signal struct {
 	SourceScope     *string    `json:"source_scope"`
 	SourceValue     *string    `json:"source_value"`
 	SourceIP        *string    `json:"source_ip"`
+	SourceRange     *string    `json:"source_range"`
+	SourceAsName    *string    `json:"source_as_name"`
+	SourceAsNumber  *int       `json:"source_as_number"`
+	SourceCountry   *string    `json:"source_country"`
+	SourceLatitude  *float64   `json:"source_latitude"`
+	SourceLongitude *float64   `json:"source_longitude"`
 	Labels          []byte     `json:"labels"`
 	StartAt         *time.Time `json:"start_at"`
 	StopAt          *time.Time `json:"stop_at"`
