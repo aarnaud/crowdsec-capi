@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/rs/zerolog/log"
@@ -109,9 +110,35 @@ func V3DecisionStreamHandler(pool dbPool) http.HandlerFunc {
 			deletedList = append(deletedList, *deletedGroups[k])
 		}
 
+		// Build allowlist links so the agent can discover and fetch allowlists
+		allLists, _ := queries.GetAllowlists(r.Context(), pool)
+		scheme := "https"
+		if r.TLS == nil {
+			scheme = "http"
+		}
+		baseURL := scheme + "://" + r.Host
+		allowlistLinks := make([]models.AllowlistLinkWire, 0, len(allLists))
+		for _, a := range allLists {
+			link := models.AllowlistLinkWire{
+				ID:        fmt.Sprintf("%d", a.ID),
+				Name:      a.Name,
+				CreatedAt: a.CreatedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
+				UpdatedAt: a.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
+				URL:       baseURL + "/v3/allowlists/" + a.Name + "?with_content=true",
+			}
+			if a.Description != nil {
+				link.Description = *a.Description
+			}
+			allowlistLinks = append(allowlistLinks, link)
+		}
+
 		writeJSON(w, http.StatusOK, models.V3DecisionStreamResponse{
 			New:     newList,
 			Deleted: deletedList,
+			Links: &models.V3DecisionStreamLinks{
+				Allowlists: allowlistLinks,
+				Blocklists: []interface{}{},
+			},
 		})
 	}
 }

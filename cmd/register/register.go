@@ -84,6 +84,7 @@ type credentials struct {
 	URL      string `yaml:"url"`
 	Login    string `yaml:"login"`
 	Password string `yaml:"password"`
+	PapiURL  string `yaml:"papi_url"`
 }
 
 func run(_ *cobra.Command, _ []string) error {
@@ -161,6 +162,7 @@ func run(_ *cobra.Command, _ []string) error {
 		URL:      capiURL + "/",
 		Login:    machineID,
 		Password: password,
+		PapiURL:  capiURL + "/",
 	}
 	data, err := yaml.Marshal(creds)
 	if err != nil {

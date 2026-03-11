@@ -192,6 +192,47 @@ type DecisionStreamResponse struct {
 	Deleted []DecisionWire `json:"deleted"`
 }
 
+// Agent-facing allowlist wire types
+
+type AllowlistItemWire struct {
+	Value       string `json:"value"`
+	Description string `json:"description,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+	Expiration  string `json:"expiration,omitempty"`
+}
+
+type AllowlistResponseWire struct {
+	AllowlistID    string              `json:"allowlist_id,omitempty"`
+	ConsoleManaged bool                `json:"console_managed"`
+	CreatedAt      string              `json:"created_at,omitempty"`
+	Description    string              `json:"description,omitempty"`
+	Name           string              `json:"name"`
+	UpdatedAt      string              `json:"updated_at,omitempty"`
+	Items          []AllowlistItemWire `json:"items"`
+}
+
+type AllowlistLinkWire struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+	UpdatedAt   string `json:"updated_at,omitempty"`
+	URL         string `json:"url"`
+}
+
+type BulkCheckAllowlistRequest struct {
+	Targets []string `json:"targets" validate:"required"`
+}
+
+type BulkCheckAllowlistResult struct {
+	Target     string   `json:"target"`
+	Allowlists []string `json:"allowlists"`
+}
+
+type BulkCheckAllowlistResponse struct {
+	Results []BulkCheckAllowlistResult `json:"results"`
+}
+
 // V3 decisions stream response — decisions grouped by scenario+scope
 
 type V3DecisionNew struct {
@@ -210,7 +251,13 @@ type V3DecisionDeletedGroup struct {
 	Decisions []string `json:"decisions"`
 }
 
+type V3DecisionStreamLinks struct {
+	Allowlists []AllowlistLinkWire `json:"allowlists"`
+	Blocklists []interface{}       `json:"blocklists"`
+}
+
 type V3DecisionStreamResponse struct {
 	New     []V3DecisionNewGroup     `json:"new"`
 	Deleted []V3DecisionDeletedGroup `json:"deleted"`
+	Links   *V3DecisionStreamLinks   `json:"links,omitempty"`
 }

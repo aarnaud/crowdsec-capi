@@ -19,6 +19,37 @@ func IsAllowlisted(ctx context.Context, db *pgxpool.Pool, scope, value string) (
 	return count > 0, err
 }
 
+// GetAllowlistByName returns an allowlist by name, or nil if not found.
+func GetAllowlistByName(ctx context.Context, db *pgxpool.Pool, name string) (*models.Allowlist, error) {
+	a := &models.Allowlist{}
+	err := db.QueryRow(ctx, `
+		SELECT id, name, label, description, managed, created_at, updated_at
+		FROM allowlists WHERE name = $1
+	`, name).Scan(&a.ID, &a.Name, &a.Label, &a.Description, &a.Managed, &a.CreatedAt, &a.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return a, nil
+}
+
+// CheckAllowlistedValue checks if a value (IP or range) is in any allowlist.
+// Returns the matching allowlist name and entry comment, or empty strings if not found.
+func CheckAllowlistedValue(ctx context.Context, db *pgxpool.Pool, value string) (string, string, error) {
+	var allowlistName, comment string
+	err := db.QueryRow(ctx, `
+		SELECT a.name, COALESCE(e.comment, '')
+		FROM allowlist_entries e
+		JOIN allowlists a ON a.id = e.allowlist_id
+		WHERE e.value = $1
+		  AND (e.expires_at IS NULL OR e.expires_at > NOW())
+		LIMIT 1
+	`, value).Scan(&allowlistName, &comment)
+	if err != nil {
+		return "", "", err // pgx.ErrNoRows if not found
+	}
+	return allowlistName, comment, nil
+}
+
 func GetAllowlists(ctx context.Context, db *pgxpool.Pool) ([]models.Allowlist, error) {
 	rows, err := db.Query(ctx, `
 		SELECT id, name, label, description, managed, created_at, updated_at

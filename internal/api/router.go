@@ -123,6 +123,15 @@ func NewRouter(
 	sessionMgr *auth.SessionManager,
 ) http.Handler {
 	r := chi.NewRouter()
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		log.Warn().
+			Str("method", r.Method).
+			Str("path", r.URL.Path).
+			Str("query", r.URL.RawQuery).
+			Str("remote_addr", r.RemoteAddr).
+			Msg("404 no route matched")
+		http.Error(w, "404 page not found", http.StatusNotFound)
+	})
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(apiStripSlashes)
@@ -203,6 +212,10 @@ func NewRouter(
 			r.Get(p+"/heartbeat", v2.HeartbeatHandler(pool))
 			r.Get(p+"/allowlists", v2.AllowlistsGetHandler(pool))
 			r.Head(p+"/allowlists", v2.AllowlistsHeadHandler(pool))
+			r.Get(p+"/allowlists/check/{value}", v2.AllowlistCheckGetHandler(pool))
+			r.Head(p+"/allowlists/check/{value}", v2.AllowlistCheckHeadHandler(pool))
+			r.Post(p+"/allowlists/check", v2.AllowlistCheckBulkHandler(pool))
+			r.Get(p+"/allowlists/{name}", v2.AllowlistGetByNameHandler(pool))
 			r.Post(p+"/allowlists/{name}", v2.AllowlistsPostHandler(pool))
 			r.Get(p+"/papi/v1/decisions", v2.PAPIHandler())
 		}
@@ -210,6 +223,10 @@ func NewRouter(
 		// version-specific decision stream handlers
 		r.Get("/v2/decisions/stream", v2.DecisionStreamHandler(pool))
 		r.Get("/v3/decisions/stream", v2.V3DecisionStreamHandler(pool))
+
+		// PAPI (Push API) — same JWT auth, uses /v1/ prefix
+		r.Get("/v1/permissions", v2.PAPIPermissionsHandler())
+		r.Get("/v1/decisions/stream/poll", v2.PAPIPollHandler())
 	})
 
 	// Admin endpoints
