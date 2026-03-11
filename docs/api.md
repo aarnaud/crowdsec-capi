@@ -13,11 +13,49 @@ Authorization: Bearer <token>
 ```
 
 ### Admin endpoints (`/admin/*`)
-Either HTTP Basic Auth or a static Bearer token:
+Three methods are accepted, checked in order:
+
+1. **Session cookie** `capi_session` — set after a successful OIDC login (browser flow)
+2. **Bearer API key** — static token configured via `admin.api_key`
+3. **HTTP Basic Auth**
+
 ```
-Authorization: Basic base64(username:password)
 Authorization: Bearer <admin_api_key>
+Authorization: Basic base64(username:password)
 ```
+
+Basic Auth and Bearer key work regardless of whether OIDC is configured.
+
+---
+
+## Auth (OIDC browser flow)
+
+These endpoints are **public** (no authentication required).
+
+### `GET /auth/config`
+
+Returns the server's authentication configuration so the UI knows which login method to present.
+
+**Response** `200`
+```json
+{ "oidc_enabled": true }
+```
+
+### `GET /auth/login`
+
+Initiates the OIDC authorization code flow. Redirects the browser to the configured identity provider. Sets a short-lived `capi_state` cookie (10 min, HttpOnly) for CSRF protection.
+
+Returns `404` if OIDC is not configured.
+
+### `GET /auth/callback?code=…&state=…`
+
+Handles the redirect from the identity provider. Validates the state cookie, exchanges the code for an ID token, verifies the token, enforces any `allowed_emails` / `allowed_domains` restrictions, then sets a `capi_session` cookie (HttpOnly, SameSite=Lax) and redirects to `/ui`.
+
+Returns `401` if authentication fails or the user is not in the allow-list.
+
+### `GET /auth/logout`
+
+Clears the `capi_session` cookie and redirects to `/ui`.
 
 ---
 

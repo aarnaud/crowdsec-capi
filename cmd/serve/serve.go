@@ -18,10 +18,12 @@ import (
 
 	"github.com/aarnaud/crowdsec-central-api/internal/allowlists"
 	"github.com/aarnaud/crowdsec-central-api/internal/api"
+	"github.com/aarnaud/crowdsec-central-api/internal/api/authapi"
 	"github.com/aarnaud/crowdsec-central-api/internal/auth"
 	"github.com/aarnaud/crowdsec-central-api/internal/config"
 	"github.com/aarnaud/crowdsec-central-api/internal/db"
 	"github.com/aarnaud/crowdsec-central-api/internal/db/queries"
+	"github.com/aarnaud/crowdsec-central-api/internal/oidcauth"
 	"github.com/aarnaud/crowdsec-central-api/internal/service"
 	"github.com/aarnaud/crowdsec-central-api/internal/upstream"
 )
@@ -70,6 +72,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	defer pool.Close()
 
+	// Init OIDC provider if configured
+	var oidcProvider *oidcauth.Provider
+	if cfg.Auth.OIDC.Enabled {
+		log.Info().Str("issuer", cfg.Auth.OIDC.Issuer).Msg("initializing OIDC provider")
+		oidcProvider, err = oidcauth.New(ctx, cfg.Auth.OIDC)
+		if err != nil {
+			return fmt.Errorf("OIDC init: %w", err)
+		}
+		log.Info().Msg("OIDC provider ready")
+		if len(cfg.Auth.OIDC.AllowedEmails) == 0 && len(cfg.Auth.OIDC.AllowedDomains) == 0 {
+			log.Warn().Msg("OIDC: no allowed_emails or allowed_domains configured — any authenticated user can access the admin UI")
+		}
+	}
+
 	// Load allowlists from file if configured
 	if cfg.Allowlists.File != "" {
 		log.Info().Str("file", cfg.Allowlists.File).Msg("loading allowlists from file")
@@ -87,9 +103,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 			Msg("no admin password configured — generated a random one (set CAPI_ADMIN_PASSWORD to persist)")
 	}
 
-	// Get JWT secret
-	jwtSecret := getJWTSecret()
+	// Get or create a persistent JWT secret stored in the database
+	jwtSecret, err := queries.GetOrCreateJWTSecret(ctx, pool)
+	if err != nil {
+		return fmt.Errorf("loading JWT secret: %w", err)
+	}
 	jwtMgr := auth.NewJWTManager(jwtSecret, cfg.Server.JWTTTL)
+	sessionMgr := auth.NewSessionManager(jwtSecret, cfg.Server.JWTTTL)
+	authHandlers := authapi.New(oidcProvider, sessionMgr, cfg.Server.JWTTTL, cfg.Server.SecureCookies)
 	signalSvc := service.NewSignalService(pool, cfg.Decisions.DefaultDuration)
 
 	// Start background goroutines
@@ -102,7 +123,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		go syncer.Run(ctx)
 	}
 
-	router := api.NewRouter(pool, cfg, jwtMgr, signalSvc)
+	router := api.NewRouter(pool, cfg, jwtMgr, signalSvc, authHandlers, sessionMgr)
 
 	srv := &http.Server{
 		Addr:         cfg.Server.Listen,
@@ -129,17 +150,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 	defer shutCancel()
 	cancel()
 	return srv.Shutdown(shutCtx)
-}
-
-func getJWTSecret() []byte {
-	if secret := os.Getenv("JWT_SECRET"); secret != "" {
-		return []byte(secret)
-	}
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		panic("failed to generate JWT secret: " + err.Error())
-	}
-	return b
 }
 
 func generateSecret(nBytes int) string {

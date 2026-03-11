@@ -3,6 +3,7 @@ package v2
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/rs/zerolog/log"
@@ -46,7 +47,8 @@ func RegisterHandler(pool dbPool, jwtMgr *auth.JWTManager) http.HandlerFunc {
 
 		ip := r.RemoteAddr
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			ip = xff
+			// Take only the first (client) IP; the header may contain a chain
+			ip = strings.TrimSpace(strings.SplitN(xff, ",", 2)[0])
 		}
 
 		if err := queries.CreateMachine(r.Context(), pool, req.MachineID, hash, ip); err != nil {
@@ -75,6 +77,11 @@ func LoginHandler(pool dbPool, jwtMgr *auth.JWTManager) http.HandlerFunc {
 
 		if !auth.CheckPassword(req.Password, machine.PasswordHash) {
 			writeError(w, http.StatusUnauthorized, "invalid credentials")
+			return
+		}
+
+		if machine.Status == "blocked" {
+			writeError(w, http.StatusForbidden, "machine is blocked")
 			return
 		}
 

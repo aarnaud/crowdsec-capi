@@ -1,6 +1,7 @@
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 let authHeader = null;
+let oidcEnabled = false;
 
 function savedCreds() {
   const u = localStorage.getItem('admin_user');
@@ -13,7 +14,7 @@ async function doLogin() {
   const p = document.getElementById('login-pass').value;
   const hdr = 'Basic ' + btoa(u + ':' + p);
   try {
-    const r = await fetch('/admin/stats', { headers: { Authorization: hdr } });
+    const r = await fetch('/admin/stats', { headers: { Authorization: hdr, Accept: 'application/json' }, credentials: 'include' });
     if (!r.ok) throw new Error('bad credentials');
     localStorage.setItem('admin_user', u);
     localStorage.setItem('admin_pass', p);
@@ -34,14 +35,23 @@ function logout() {
   localStorage.removeItem('admin_user');
   localStorage.removeItem('admin_pass');
   authHeader = null;
-  document.getElementById('login-overlay').classList.add('open');
-  document.getElementById('login-error').textContent = '';
+  if (oidcEnabled) {
+    window.location.href = '/auth/logout';
+  } else {
+    document.getElementById('login-overlay').classList.add('open');
+    document.getElementById('login-error').textContent = '';
+  }
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
 async function api(method, path, body) {
-  const opts = { method, headers: { Authorization: authHeader } };
+  const opts = {
+    method,
+    credentials: 'include',
+    headers: { 'Accept': 'application/json' },
+  };
+  if (authHeader) opts.headers['Authorization'] = authHeader;
   if (body !== undefined) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
@@ -465,10 +475,40 @@ function relTime(iso) {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
-const saved = savedCreds();
-if (saved) {
-  authHeader = 'Basic ' + saved;
-  document.getElementById('login-overlay').classList.remove('open');
-  document.getElementById('header-user').textContent = localStorage.getItem('admin_user');
-  loadPage('dashboard');
+async function boot() {
+  // Check auth config
+  try {
+    const cfg = await fetch('/auth/config').then(r => r.json());
+    oidcEnabled = cfg.oidc_enabled === true;
+  } catch { oidcEnabled = false; }
+
+  if (oidcEnabled) {
+    // Show SSO button, hide basic auth form
+    document.getElementById('login-basic').style.display = 'none';
+    document.getElementById('login-oidc').style.display  = 'block';
+
+    // Check session cookie via dedicated endpoint (never triggers browser Basic Auth dialog)
+    try {
+      const r = await fetch('/auth/session', { credentials: 'include' });
+      const data = await r.json();
+      if (!data.authenticated) throw new Error('not authenticated');
+      document.getElementById('login-overlay').classList.remove('open');
+      document.getElementById('header-user').textContent = data.name || data.email || 'SSO';
+      loadPage('dashboard');
+    } catch {
+      document.getElementById('login-overlay').classList.add('open');
+    }
+    return;
+  }
+
+  // Basic auth mode
+  const saved = savedCreds();
+  if (saved) {
+    authHeader = 'Basic ' + saved;
+    document.getElementById('login-overlay').classList.remove('open');
+    document.getElementById('header-user').textContent = localStorage.getItem('admin_user');
+    loadPage('dashboard');
+  }
 }
+
+boot();

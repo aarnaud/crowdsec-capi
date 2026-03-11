@@ -3,7 +3,6 @@ package queries
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -111,26 +110,20 @@ func UpdateMachineScenarios(ctx context.Context, db *pgxpool.Pool, machineID str
 }
 
 func GetEnrollmentKey(ctx context.Context, db *pgxpool.Pool, key string) error {
+	// Atomic check-and-increment: only succeeds if key exists, is not expired,
+	// and has not exceeded max_uses. This eliminates the TOCTOU race.
 	var id int64
-	var maxUses *int
-	var useCount int
-	var expiresAt *time.Time
-
 	err := db.QueryRow(ctx, `
-		SELECT id, max_uses, use_count, expires_at
-		FROM enrollment_keys WHERE key = $1
-	`, key).Scan(&id, &maxUses, &useCount, &expiresAt)
+		UPDATE enrollment_keys
+		SET use_count = use_count + 1
+		WHERE key = $1
+		  AND (expires_at IS NULL OR expires_at > NOW())
+		  AND (max_uses IS NULL OR use_count < max_uses)
+		RETURNING id
+	`, key).Scan(&id)
 	if err != nil {
-		return fmt.Errorf("enrollment key not found")
+		// Could be not found, expired, or exhausted — don't leak which
+		return fmt.Errorf("invalid or exhausted enrollment key")
 	}
-	if expiresAt != nil && time.Now().After(*expiresAt) {
-		return fmt.Errorf("enrollment key expired")
-	}
-	if maxUses != nil && useCount >= *maxUses {
-		return fmt.Errorf("enrollment key exhausted")
-	}
-	_, err = db.Exec(ctx, `
-		UPDATE enrollment_keys SET use_count = use_count + 1 WHERE id = $1
-	`, id)
-	return err
+	return nil
 }

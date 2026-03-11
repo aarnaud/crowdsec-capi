@@ -115,9 +115,14 @@
     <h2>CrowdSec Central API</h2>
     <p>Sign in to the admin dashboard</p>
     <div id="login-error"></div>
-    <div class="field"><label>Username</label><input id="login-user" value="admin" /></div>
-    <div class="field"><label>Password</label><input id="login-pass" type="password" /></div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px" onclick="doLogin()">Sign in</button>
+    <div id="login-basic">
+      <div class="field"><label>Username</label><input id="login-user" value="admin" /></div>
+      <div class="field"><label>Password</label><input id="login-pass" type="password" /></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px" onclick="doLogin()">Sign in</button>
+    </div>
+    <div id="login-oidc" style="display:none">
+      <a href="/auth/login" class="btn btn-primary" style="width:100%;justify-content:center;padding:10px;text-decoration:none">Sign in with SSO</a>
+    </div>
   </div>
 </div>
 

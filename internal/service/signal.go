@@ -10,6 +10,7 @@ import (
 
 	"github.com/aarnaud/crowdsec-central-api/internal/db/queries"
 	"github.com/aarnaud/crowdsec-central-api/internal/models"
+	"github.com/aarnaud/crowdsec-central-api/internal/validation"
 )
 
 const maxSignalBatch = 250
@@ -72,6 +73,9 @@ func (s *SignalService) ProcessSignals(ctx context.Context, machineID string, si
 		// Process decisions from signal
 		for _, dec := range sig.Decisions {
 			if dec.Scope == "" || dec.Value == "" {
+				continue
+			}
+			if err := validation.DecisionFields(dec.Type, dec.Scope, dec.Value); err != nil {
 				continue
 			}
 			// Check allowlist

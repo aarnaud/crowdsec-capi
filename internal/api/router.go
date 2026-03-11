@@ -1,7 +1,11 @@
 package api
 
 import (
+	"crypto/subtle"
 	"net/http"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -9,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/aarnaud/crowdsec-central-api/internal/api/admin"
+	"github.com/aarnaud/crowdsec-central-api/internal/api/authapi"
 	v2 "github.com/aarnaud/crowdsec-central-api/internal/api/v2"
 	"github.com/aarnaud/crowdsec-central-api/internal/auth"
 	"github.com/aarnaud/crowdsec-central-api/internal/config"
@@ -16,12 +21,80 @@ import (
 	"github.com/aarnaud/crowdsec-central-api/internal/web"
 )
 
-func NewRouter(pool *pgxpool.Pool, cfg *config.Config, jwtMgr *auth.JWTManager, signalSvc *service.SignalService) http.Handler {
+// ipRateLimiter is a simple per-IP sliding-window rate limiter.
+type ipRateLimiter struct {
+	mu      sync.Mutex
+	entries map[string][]time.Time
+	limit   int
+	window  time.Duration
+}
+
+func newIPRateLimiter(limit int, window time.Duration) *ipRateLimiter {
+	return &ipRateLimiter{entries: make(map[string][]time.Time), limit: limit, window: window}
+}
+
+func (rl *ipRateLimiter) allow(ip string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	now := time.Now()
+	cutoff := now.Add(-rl.window)
+	times := rl.entries[ip]
+	var valid []time.Time
+	for _, t := range times {
+		if t.After(cutoff) {
+			valid = append(valid, t)
+		}
+	}
+	if len(valid) >= rl.limit {
+		rl.entries[ip] = valid
+		return false
+	}
+	rl.entries[ip] = append(valid, now)
+	return true
+}
+
+func rateLimitMiddleware(rl *ipRateLimiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ip := r.RemoteAddr
+			if idx := strings.LastIndex(ip, ":"); idx > 0 {
+				ip = ip[:idx]
+			}
+			if !rl.allow(ip) {
+				w.Header().Set("Content-Type", "application/json")
+				http.Error(w, `{"message":"too many requests"}`, http.StatusTooManyRequests)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func NewRouter(
+	pool *pgxpool.Pool,
+	cfg *config.Config,
+	jwtMgr *auth.JWTManager,
+	signalSvc *service.SignalService,
+	authHandlers *authapi.Handlers,
+	sessionMgr *auth.SessionManager,
+) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(chiZerologLogger)
 	r.Use(middleware.Recoverer)
+	r.Use(securityHeadersMiddleware)
+	// Limit request bodies to 4 MB globally (signals handler is the largest consumer)
+	r.Use(middleware.RequestSize(4 << 20))
 
 	// Static dashboard
 	staticFS := http.FS(web.Static)
@@ -44,9 +117,17 @@ func NewRouter(pool *pgxpool.Pool, cfg *config.Config, jwtMgr *auth.JWTManager, 
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	// v2 public endpoints
-	r.Post("/v2/watchers", v2.RegisterHandler(pool, jwtMgr))
-	r.Post("/v2/watchers/login", v2.LoginHandler(pool, jwtMgr))
+	// Auth (public)
+	r.Get("/auth/config", authHandlers.ConfigHandler())
+	r.Get("/auth/session", authHandlers.SessionHandler())
+	r.Get("/auth/login", authHandlers.LoginHandler())
+	r.Get("/auth/callback", authHandlers.CallbackHandler())
+	r.Get("/auth/logout", authHandlers.LogoutHandler())
+
+	// v2 public endpoints — rate-limited: 10 requests per minute per IP
+	authLimiter := newIPRateLimiter(10, time.Minute)
+	r.With(rateLimitMiddleware(authLimiter)).Post("/v2/watchers", v2.RegisterHandler(pool, jwtMgr))
+	r.With(rateLimitMiddleware(authLimiter)).Post("/v2/watchers/login", v2.LoginHandler(pool, jwtMgr))
 
 	// v2 authenticated endpoints
 	r.Group(func(r chi.Router) {
@@ -68,7 +149,7 @@ func NewRouter(pool *pgxpool.Pool, cfg *config.Config, jwtMgr *auth.JWTManager, 
 
 	// Admin endpoints
 	r.Group(func(r chi.Router) {
-		r.Use(adminAuthMiddleware(cfg))
+		r.Use(adminAuthMiddleware(cfg, sessionMgr))
 		r.Get("/admin/machines", admin.ListMachinesHandler(pool))
 		r.Put("/admin/machines/{machine_id}/block", admin.BlockMachineHandler(pool))
 		r.Put("/admin/machines/{machine_id}/unblock", admin.UnblockMachineHandler(pool))
@@ -90,27 +171,56 @@ func NewRouter(pool *pgxpool.Pool, cfg *config.Config, jwtMgr *auth.JWTManager, 
 	return r
 }
 
-func adminAuthMiddleware(cfg *config.Config) func(http.Handler) http.Handler {
+func adminAuthMiddleware(cfg *config.Config, sessionMgr *auth.SessionManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Try Bearer API key first
+			// 1. Session cookie (set after OIDC login)
+			if sessionMgr != nil {
+				if cookie, err := r.Cookie(auth.SessionCookieName); err == nil {
+					if _, err := sessionMgr.Verify(cookie.Value); err == nil {
+						next.ServeHTTP(w, r)
+						return
+					}
+				}
+			}
+
+			// 2. Bearer API key (constant-time compare to prevent timing attacks)
 			if cfg.Admin.APIKey != "" {
-				bearer := r.Header.Get("Authorization")
-				if bearer == "Bearer "+cfg.Admin.APIKey {
+				got := r.Header.Get("Authorization")
+				want := "Bearer " + cfg.Admin.APIKey
+				if subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1 {
 					next.ServeHTTP(w, r)
 					return
 				}
 			}
-			// Fall back to Basic Auth
+
+			// 3. HTTP Basic Auth (constant-time compare to prevent timing attacks)
 			user, pass, ok := r.BasicAuth()
-			if !ok || user != cfg.Admin.Username || pass != cfg.Admin.Password {
-				w.Header().Set("WWW-Authenticate", `Basic realm="admin"`)
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
+			if ok {
+				userOK := subtle.ConstantTimeCompare([]byte(user), []byte(cfg.Admin.Username)) == 1
+				passOK := subtle.ConstantTimeCompare([]byte(pass), []byte(cfg.Admin.Password)) == 1
+				if userOK && passOK {
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
-			next.ServeHTTP(w, r)
+
+			// Only send WWW-Authenticate for browser navigation requests.
+			// Omitting it prevents the browser's native Basic Auth dialog
+			// from appearing when the UI or scripts make JSON API calls.
+			if !isJSONRequest(r) {
+				w.Header().Set("WWW-Authenticate", `Basic realm="admin"`)
+			}
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
 		})
 	}
+}
+
+// isJSONRequest returns true for fetch/XHR calls that should not trigger the
+// browser's native Basic Auth dialog. Detected via Accept or X-Requested-With.
+func isJSONRequest(r *http.Request) bool {
+	return r.Header.Get("X-Requested-With") == "XMLHttpRequest" ||
+		strings.Contains(r.Header.Get("Accept"), "application/json")
 }
 
 func chiZerologLogger(next http.Handler) http.Handler {

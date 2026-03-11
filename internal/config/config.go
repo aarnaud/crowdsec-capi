@@ -11,6 +11,7 @@ import (
 type Config struct {
 	Server     ServerConfig     `mapstructure:"server"`
 	Admin      AdminConfig      `mapstructure:"admin"`
+	Auth       AuthConfig       `mapstructure:"auth"`
 	Database   DatabaseConfig   `mapstructure:"database"`
 	Upstream   UpstreamConfig   `mapstructure:"upstream"`
 	Decisions  DecisionsConfig  `mapstructure:"decisions"`
@@ -19,14 +20,30 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Listen string        `mapstructure:"listen"`
-	JWTTTL time.Duration `mapstructure:"jwt_ttl"`
+	Listen        string        `mapstructure:"listen"`
+	JWTTTL        time.Duration `mapstructure:"jwt_ttl"`
+	SecureCookies bool          `mapstructure:"secure_cookies"`
 }
 
 type AdminConfig struct {
 	Username string `mapstructure:"username"`
 	Password string `mapstructure:"password"`
 	APIKey   string `mapstructure:"api_key"`
+}
+
+type AuthConfig struct {
+	OIDC OIDCConfig `mapstructure:"oidc"`
+}
+
+type OIDCConfig struct {
+	Enabled        bool     `mapstructure:"enabled"`
+	Issuer         string   `mapstructure:"issuer"`
+	ClientID       string   `mapstructure:"client_id"`
+	ClientSecret   string   `mapstructure:"client_secret"`
+	RedirectURL    string   `mapstructure:"redirect_url"`
+	Scopes         []string `mapstructure:"scopes"`
+	AllowedEmails  []string `mapstructure:"allowed_emails"`
+	AllowedDomains []string `mapstructure:"allowed_domains"`
 }
 
 type AllowlistsConfig struct {
@@ -77,6 +94,7 @@ func Load(cfgFile string) (*Config, error) {
 	v.SetDefault("decisions.sources.manual", true)
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.format", "json")
+	v.SetDefault("auth.oidc.scopes", []string{"openid", "profile", "email"})
 
 	if cfgFile != "" {
 		v.SetConfigFile(cfgFile)

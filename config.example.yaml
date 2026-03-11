@@ -1,11 +1,23 @@
 server:
   listen: "0.0.0.0:8080"
   jwt_ttl: "24h"
+  secure_cookies: false  # set to true when serving over HTTPS
 
 admin:
   username: "admin"
   password: ""       # leave empty to auto-generate on startup (printed to logs)
   api_key: ""
+
+auth:
+  oidc:
+    enabled: false
+    issuer: ""           # e.g. https://accounts.google.com or https://your-keycloak/realms/myrealm
+    client_id: ""
+    client_secret: ""
+    redirect_url: "http://localhost:8080/auth/callback"
+    scopes: ["openid", "profile", "email"]
+    allowed_emails: []   # restrict to specific emails (empty = allow all authenticated users)
+    allowed_domains: []  # restrict to email domains e.g. ["mycompany.com"]
 
 allowlists:
   file: ""           # path to allowlists.yaml for allowlists-as-code (e.g. ./allowlists.yaml)

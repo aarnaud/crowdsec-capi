@@ -9,6 +9,7 @@ import (
 
 	"github.com/aarnaud/crowdsec-central-api/internal/db/queries"
 	"github.com/aarnaud/crowdsec-central-api/internal/models"
+	"github.com/aarnaud/crowdsec-central-api/internal/validation"
 )
 
 func ListDecisionsHandler(pool dbPool) http.HandlerFunc {
@@ -39,6 +40,11 @@ func CreateDecisionHandler(pool dbPool, defaultDuration time.Duration) http.Hand
 		var req CreateDecisionRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		if err := validation.DecisionFields(req.Type, req.Scope, req.Value); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 

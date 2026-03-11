@@ -36,11 +36,23 @@ Then re-register: `sudo cscli capi register`
 server:
   listen: "0.0.0.0:8080"
   jwt_ttl: "24h"
+  secure_cookies: false  # set to true when serving over HTTPS
 
 admin:
   username: "admin"
   password: ""       # auto-generated if empty (printed to logs at startup)
   api_key: ""        # optional static Bearer token for admin API
+
+auth:
+  oidc:
+    enabled: false
+    issuer: ""           # e.g. https://accounts.google.com
+    client_id: ""
+    client_secret: ""
+    redirect_url: "http://localhost:8080/auth/callback"
+    scopes: ["openid", "profile", "email"]
+    allowed_emails: []   # restrict to specific emails (empty = allow all)
+    allowed_domains: []  # restrict by domain e.g. ["mycompany.com"]
 
 allowlists:
   file: ""           # path to allowlists-as-code YAML file
@@ -64,7 +76,34 @@ log:
   format: "json"     # json | pretty
 ```
 
-All keys are also settable via environment variables with the `CAPI_` prefix (dots become underscores), e.g. `CAPI_DATABASE_DSN`, `CAPI_ADMIN_PASSWORD`, `CAPI_UPSTREAM_MACHINE_ID`.
+All keys are settable via environment variables with the `CAPI_` prefix (dots become underscores), e.g. `CAPI_DATABASE_DSN`, `CAPI_ADMIN_PASSWORD`, `CAPI_AUTH_OIDC_ISSUER`.
+
+## Admin Authentication
+
+Three methods are accepted for `/admin/*` endpoints, checked in order:
+
+1. **OIDC session cookie** — set after a browser-based SSO login via `/auth/login`
+2. **Bearer API key** — `Authorization: Bearer <api_key>` (set `admin.api_key` in config)
+3. **HTTP Basic Auth** — `Authorization: Basic base64(username:password)`
+
+Basic Auth and Bearer key always work regardless of whether OIDC is configured, making them suitable for scripts and CI/CD.
+
+### OIDC / SSO Setup
+
+Enable OIDC to allow browser-based login with any OpenID Connect provider (Google, Keycloak, Authentik, Okta, etc.):
+
+```yaml
+auth:
+  oidc:
+    enabled: true
+    issuer: "https://accounts.google.com"
+    client_id: "my-client-id"
+    client_secret: "my-secret"
+    redirect_url: "http://localhost:8080/auth/callback"
+    allowed_domains: ["mycompany.com"]   # optional
+```
+
+Register `http://localhost:8080/auth/callback` as an allowed redirect URI in your provider. When OIDC is enabled the web UI shows a "Sign in with SSO" button instead of the username/password form.
 
 ## Allowlists as Code
 
@@ -107,7 +146,7 @@ go build -trimpath -ldflags="-s -w" -o crowdsec-capi .
 ./crowdsec-capi serve -c config.yaml
 ```
 
-Multi-stage Docker build:
+Multi-stage Docker build (Go 1.25 → distroless):
 
 ```bash
 docker build -t crowdsec-capi:latest .
