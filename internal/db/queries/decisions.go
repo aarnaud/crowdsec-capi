@@ -188,6 +188,12 @@ func SoftDeleteExpiredDecisions(ctx context.Context, db *pgxpool.Pool) (int64, e
 }
 
 func ListDecisions(ctx context.Context, db *pgxpool.Pool, includeDeleted bool, limit, offset int) ([]models.Decision, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	query := `
 		SELECT id, uuid, origin, type, scope, value,
 		       EXTRACT(EPOCH FROM duration)::bigint,
