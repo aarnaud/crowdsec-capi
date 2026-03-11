@@ -5,93 +5,93 @@ import (
 )
 
 type Machine struct {
-	ID           int64
-	MachineID    string
-	PasswordHash string
-	Name         *string
-	Tags         []string
-	Scenarios    []byte
-	IPAddress    *string
-	Status       string
-	EnrolledAt   *time.Time
-	LastSeenAt   *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID           int64      `json:"id"`
+	MachineID    string     `json:"machine_id"`
+	PasswordHash string     `json:"-"`
+	Name         *string    `json:"name"`
+	Tags         []string   `json:"tags"`
+	Scenarios    []byte     `json:"scenarios"`
+	IPAddress    *string    `json:"ip_address"`
+	Status       string     `json:"status"`
+	EnrolledAt   *time.Time `json:"enrolled_at"`
+	LastSeenAt   *time.Time `json:"last_seen_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 type Decision struct {
-	ID              int64
-	UUID            string
-	Origin          string
-	Type            string
-	Scope           string
-	Value           string
-	Duration        time.Duration
-	Scenario        *string
-	SourceMachineID *string
-	Simulated       bool
-	IsDeleted       bool
-	ExpiresAt       time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	DeletedAt       *time.Time
+	ID              int64         `json:"id"`
+	UUID            string        `json:"uuid"`
+	Origin          string        `json:"origin"`
+	Type            string        `json:"type"`
+	Scope           string        `json:"scope"`
+	Value           string        `json:"value"`
+	Duration        time.Duration `json:"duration"`
+	Scenario        *string       `json:"scenario"`
+	SourceMachineID *string       `json:"source_machine_id"`
+	Simulated       bool          `json:"simulated"`
+	IsDeleted       bool          `json:"is_deleted"`
+	ExpiresAt       time.Time     `json:"expires_at"`
+	CreatedAt       time.Time     `json:"created_at"`
+	UpdatedAt       time.Time     `json:"updated_at"`
+	DeletedAt       *time.Time    `json:"deleted_at"`
 }
 
 type Signal struct {
-	ID              int64
-	UUID            string
-	MachineID       string
-	Scenario        string
-	ScenarioHash    *string
-	ScenarioVersion *string
-	SourceScope     *string
-	SourceValue     *string
-	SourceIP        *string
-	Labels          []byte
-	StartAt         *time.Time
-	StopAt          *time.Time
-	AlertCount      int
-	CreatedAt       time.Time
+	ID              int64      `json:"id"`
+	UUID            string     `json:"uuid"`
+	MachineID       string     `json:"machine_id"`
+	Scenario        string     `json:"scenario"`
+	ScenarioHash    *string    `json:"scenario_hash"`
+	ScenarioVersion *string    `json:"scenario_version"`
+	SourceScope     *string    `json:"source_scope"`
+	SourceValue     *string    `json:"source_value"`
+	SourceIP        *string    `json:"source_ip"`
+	Labels          []byte     `json:"labels"`
+	StartAt         *time.Time `json:"start_at"`
+	StopAt          *time.Time `json:"stop_at"`
+	AlertCount      int        `json:"alert_count"`
+	CreatedAt       time.Time  `json:"created_at"`
 }
 
 type Allowlist struct {
-	ID          int64
-	Name        string
-	Label       *string
-	Description *string
-	Managed     bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	Label       *string   `json:"label"`
+	Description *string   `json:"description"`
+	Managed     bool      `json:"managed"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type AllowlistEntry struct {
-	ID          int64
-	AllowlistID int64
-	Scope       string
-	Value       string
-	Comment     *string
-	ExpiresAt   *time.Time
-	CreatedAt   time.Time
+	ID          int64      `json:"id"`
+	AllowlistID int64      `json:"allowlist_id"`
+	Scope       string     `json:"scope"`
+	Value       string     `json:"value"`
+	Comment     *string    `json:"comment"`
+	ExpiresAt   *time.Time `json:"expires_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type EnrollmentKey struct {
-	ID          int64
-	Key         string
-	Description *string
-	Tags        []string
-	MaxUses     *int
-	UseCount    int
-	ExpiresAt   *time.Time
-	CreatedAt   time.Time
+	ID          int64      `json:"id"`
+	Key         string     `json:"key"`
+	Description *string    `json:"description"`
+	Tags        []string   `json:"tags"`
+	MaxUses     *int       `json:"max_uses"`
+	UseCount    int        `json:"use_count"`
+	ExpiresAt   *time.Time `json:"expires_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type UpstreamSyncState struct {
-	LastSyncAt     *time.Time
-	LastStartupAt  *time.Time
-	MachineID      *string
-	Token          *string
-	TokenExpiresAt *time.Time
-	DecisionCount  int
+	LastSyncAt     *time.Time `json:"last_sync_at"`
+	LastStartupAt  *time.Time `json:"last_startup_at"`
+	MachineID      *string    `json:"machine_id"`
+	Token          *string    `json:"-"`
+	TokenExpiresAt *time.Time `json:"token_expires_at"`
+	DecisionCount  int        `json:"decision_count"`
 }
 
 // Wire types (JSON request/response)

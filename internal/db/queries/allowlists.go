@@ -107,11 +107,44 @@ func DeleteAllowlist(ctx context.Context, db *pgxpool.Pool, id int64) error {
 	return err
 }
 
+func GetAllowlistEntries(ctx context.Context, db *pgxpool.Pool, allowlistID int64) ([]models.AllowlistEntry, error) {
+	rows, err := db.Query(ctx, `
+		SELECT id, allowlist_id, scope, value, comment, expires_at, created_at
+		FROM allowlist_entries WHERE allowlist_id = $1 ORDER BY created_at
+	`, allowlistID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []models.AllowlistEntry
+	for rows.Next() {
+		var e models.AllowlistEntry
+		if err := rows.Scan(&e.ID, &e.AllowlistID, &e.Scope, &e.Value, &e.Comment, &e.ExpiresAt, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
 func AddAllowlistEntry(ctx context.Context, db *pgxpool.Pool, allowlistID int64, scope, value, comment string) error {
 	_, err := db.Exec(ctx, `
 		INSERT INTO allowlist_entries (allowlist_id, scope, value, comment)
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (allowlist_id, scope, value) DO NOTHING
 	`, allowlistID, scope, value, comment)
+	return err
+}
+
+func UpdateAllowlistEntry(ctx context.Context, db *pgxpool.Pool, entryID int64, scope, value, comment string) error {
+	_, err := db.Exec(ctx, `
+		UPDATE allowlist_entries SET scope = $2, value = $3, comment = $4 WHERE id = $1
+	`, entryID, scope, value, comment)
+	return err
+}
+
+func DeleteAllowlistEntry(ctx context.Context, db *pgxpool.Pool, entryID int64) error {
+	_, err := db.Exec(ctx, `DELETE FROM allowlist_entries WHERE id = $1`, entryID)
 	return err
 }

@@ -3,6 +3,7 @@ package admin
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,9 +14,29 @@ import (
 
 type dbPool = *pgxpool.Pool
 
+func parsePagination(r *http.Request) (limit, offset int) {
+	limit = 500
+	offset = 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			if n > 5000 {
+				n = 5000
+			}
+			limit = n
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+	return
+}
+
 func ListMachinesHandler(pool dbPool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		machines, err := queries.ListMachines(r.Context(), pool)
+		limit, offset := parsePagination(r)
+		machines, err := queries.ListMachines(r.Context(), pool, limit, offset)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return

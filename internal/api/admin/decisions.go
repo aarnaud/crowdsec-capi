@@ -15,7 +15,8 @@ import (
 func ListDecisionsHandler(pool dbPool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		includeDeleted := r.URL.Query().Get("include_deleted") == "true"
-		decisions, err := queries.ListDecisions(r.Context(), pool, includeDeleted)
+		limit, offset := parsePagination(r)
+		decisions, err := queries.ListDecisions(r.Context(), pool, includeDeleted, limit, offset)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return

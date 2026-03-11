@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -14,6 +15,9 @@ import (
 )
 
 const maxSignalBatch = 250
+
+// ErrMachineBlocked is returned when a blocked machine attempts to submit signals.
+var ErrMachineBlocked = errors.New("machine is blocked")
 
 type SignalService struct {
 	db              *pgxpool.Pool
@@ -29,7 +33,24 @@ func (s *SignalService) ProcessSignals(ctx context.Context, machineID string, si
 		return fmt.Errorf("batch too large: max %d signals", maxSignalBatch)
 	}
 
+	machine, err := queries.GetMachineByID(ctx, s.db, machineID)
+	if err != nil {
+		return fmt.Errorf("machine not found")
+	}
+	if machine.Status == "blocked" {
+		return ErrMachineBlocked
+	}
+
 	for _, sig := range signals {
+		// Skip signals with oversized fields to prevent DB bloat
+		if len(sig.Scenario) > 1024 {
+			continue
+		}
+		labelsJSON, _ := json.Marshal(sig.Labels)
+		if len(labelsJSON) > 4096 {
+			continue
+		}
+
 		// Parse times
 		var startAt, stopAt *time.Time
 		if sig.StartAt != "" {
@@ -44,8 +65,6 @@ func (s *SignalService) ProcessSignals(ctx context.Context, machineID string, si
 				stopAt = &t
 			}
 		}
-
-		labelsJSON, _ := json.Marshal(sig.Labels)
 
 		srcIP := sig.Source.IP
 		if srcIP == "" {

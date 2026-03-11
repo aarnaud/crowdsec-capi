@@ -1,12 +1,15 @@
 version: "3.9"
 
+# Copy .env.example to .env and set POSTGRES_PASSWORD before running in production.
+# WARNING: sslmode=disable is for local development only — use sslmode=require in production.
+
 services:
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: capi
       POSTGRES_USER: capi
-      POSTGRES_PASSWORD: secret
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +26,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      CAPI_DATABASE_DSN: "postgresql://capi:secret@postgres:5432/capi?sslmode=disable"
+      CAPI_DATABASE_DSN: "postgresql://capi:${POSTGRES_PASSWORD:-secret}@postgres:5432/capi?sslmode=disable"
       CAPI_SERVER_LISTEN: "0.0.0.0:8080"
       CAPI_LOG_FORMAT: "pretty"
     volumes:

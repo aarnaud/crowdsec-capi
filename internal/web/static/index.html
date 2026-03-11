@@ -116,9 +116,9 @@
     <p>Sign in to the admin dashboard</p>
     <div id="login-error"></div>
     <div id="login-basic">
-      <div class="field"><label>Username</label><input id="login-user" value="admin" /></div>
+      <div class="field"><label>Username</label><input id="login-user" /></div>
       <div class="field"><label>Password</label><input id="login-pass" type="password" /></div>
-      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px" onclick="doLogin()">Sign in</button>
+      <button id="login-btn" class="btn btn-primary" style="width:100%;justify-content:center;padding:10px">Sign in</button>
     </div>
     <div id="login-oidc" style="display:none">
       <a href="/auth/login" class="btn btn-primary" style="width:100%;justify-content:center;padding:10px;text-decoration:none">Sign in with SSO</a>
@@ -131,16 +131,16 @@
   <h1>CrowdSec Central API</h1>
   <span id="header-user"></span>
   <div class="spacer"></div>
-  <button class="btn btn-secondary btn-sm" onclick="logout()">Sign out</button>
+  <button id="logout-btn" class="btn btn-secondary btn-sm">Sign out</button>
 </header>
 
 <nav>
-  <button class="active" onclick="showPage('dashboard')">Dashboard</button>
-  <button onclick="showPage('machines')">Machines</button>
-  <button onclick="showPage('decisions')">Decisions</button>
-  <button onclick="showPage('allowlists')">Allowlists</button>
-  <button onclick="showPage('enrollment')">Enrollment Keys</button>
-  <button onclick="showPage('upstream')">Upstream</button>
+  <button class="active" data-page="dashboard">Dashboard</button>
+  <button data-page="machines">Machines</button>
+  <button data-page="decisions">Decisions</button>
+  <button data-page="allowlists">Allowlists</button>
+  <button data-page="enrollment">Enrollment Keys</button>
+  <button data-page="upstream">Upstream</button>
 </nav>
 
 <main>
@@ -166,7 +166,7 @@
     </div>
 
     <div class="map-card">
-      <h3>Attack Origins — Signals by Country (last 30 days) <button class="refresh-btn" onclick="loadDashboard()" style="margin-left:8px">&#x21bb; Refresh</button></h3>
+      <h3>Attack Origins — Signals by Country (last 30 days) <button id="refresh-dashboard-btn" class="refresh-btn" style="margin-left:8px">&#x21bb; Refresh</button></h3>
       <div id="worldmap"></div>
     </div>
   </div>
@@ -190,7 +190,7 @@
     <div class="card">
       <div class="card-header">
         <h2>Decisions</h2>
-        <button class="btn btn-primary btn-sm" onclick="openAddDecision()">+ Add Decision</button>
+        <button id="add-decision-btn" class="btn btn-primary btn-sm">+ Add Decision</button>
       </div>
       <table>
         <thead><tr><th>Value</th><th>Scope</th><th>Type</th><th>Origin</th><th>Scenario</th><th>Expires</th><th>Actions</th></tr></thead>
@@ -204,7 +204,7 @@
     <div class="card">
       <div class="card-header">
         <h2>Allowlists</h2>
-        <button class="btn btn-primary btn-sm" onclick="openAddAllowlist()">+ New Allowlist</button>
+        <button id="add-allowlist-btn" class="btn btn-primary btn-sm">+ New Allowlist</button>
       </div>
       <table>
         <thead><tr><th>Name</th><th>Label</th><th>Description</th><th>Actions</th></tr></thead>
@@ -214,10 +214,10 @@
     <div id="allowlist-entries-card" class="card" style="display:none">
       <div class="card-header">
         <h2>Entries — <span id="allowlist-entries-name"></span></h2>
-        <button class="btn btn-primary btn-sm" onclick="openAddEntry()">+ Add Entry</button>
+        <button id="add-entry-btn" class="btn btn-primary btn-sm">+ Add Entry</button>
       </div>
       <table>
-        <thead><tr><th>Scope</th><th>Value</th><th>Comment</th></tr></thead>
+        <thead><tr><th>Scope</th><th>Value</th><th>Comment</th><th>Actions</th></tr></thead>
         <tbody id="allowlist-entries-body"></tbody>
       </table>
     </div>
@@ -228,7 +228,7 @@
     <div class="card">
       <div class="card-header">
         <h2>Enrollment Keys</h2>
-        <button class="btn btn-primary btn-sm" onclick="openAddKey()">+ Generate Key</button>
+        <button id="add-key-btn" class="btn btn-primary btn-sm">+ Generate Key</button>
       </div>
       <table>
         <thead><tr><th>Key</th><th>Description</th><th>Tags</th><th>Uses</th><th>Expires</th><th>Actions</th></tr></thead>
@@ -250,7 +250,7 @@
 <!-- Modal: Add Decision -->
 <div id="modal-decision" class="modal-backdrop">
   <div class="modal">
-    <button class="close" onclick="closeModal('modal-decision')">&times;</button>
+    <button class="close" data-close="modal-decision">&times;</button>
     <h3>Add Manual Decision</h3>
     <div class="field"><label>Type</label>
       <select id="dec-type"><option value="ban">ban</option><option value="captcha">captcha</option></select>
@@ -262,8 +262,8 @@
     <div class="field"><label>Duration (e.g. 24h, 7d)</label><input id="dec-duration" value="24h" /></div>
     <div class="field"><label>Scenario (optional)</label><input id="dec-scenario" placeholder="crowdsecurity/http-bf" /></div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('modal-decision')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitDecision()">Create</button>
+      <button class="btn btn-secondary" data-close="modal-decision">Cancel</button>
+      <button id="submit-decision-btn" class="btn btn-primary">Create</button>
     </div>
   </div>
 </div>
@@ -271,14 +271,14 @@
 <!-- Modal: Add Allowlist -->
 <div id="modal-allowlist" class="modal-backdrop">
   <div class="modal">
-    <button class="close" onclick="closeModal('modal-allowlist')">&times;</button>
+    <button class="close" data-close="modal-allowlist">&times;</button>
     <h3>New Allowlist</h3>
     <div class="field"><label>Name (unique identifier)</label><input id="al-name" placeholder="my-trusted-ips" /></div>
     <div class="field"><label>Label (display name)</label><input id="al-label" placeholder="Trusted IPs" /></div>
     <div class="field"><label>Description</label><input id="al-desc" placeholder="Optional description" /></div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('modal-allowlist')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitAllowlist()">Create</button>
+      <button class="btn btn-secondary" data-close="modal-allowlist">Cancel</button>
+      <button id="submit-allowlist-btn" class="btn btn-primary">Create</button>
     </div>
   </div>
 </div>
@@ -286,7 +286,7 @@
 <!-- Modal: Add Entry -->
 <div id="modal-entry" class="modal-backdrop">
   <div class="modal">
-    <button class="close" onclick="closeModal('modal-entry')">&times;</button>
+    <button class="close" data-close="modal-entry">&times;</button>
     <h3>Add Entry</h3>
     <div class="field"><label>Scope</label>
       <select id="entry-scope"><option value="Ip">Ip</option><option value="Range">Range</option><option value="Country">Country</option></select>
@@ -294,8 +294,25 @@
     <div class="field"><label>Value</label><input id="entry-value" placeholder="e.g. 10.0.0.1" /></div>
     <div class="field"><label>Comment</label><input id="entry-comment" placeholder="Optional" /></div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('modal-entry')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitEntry()">Add</button>
+      <button class="btn btn-secondary" data-close="modal-entry">Cancel</button>
+      <button id="submit-entry-btn" class="btn btn-primary">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Edit Allowlist Entry -->
+<div id="modal-edit-entry" class="modal-backdrop">
+  <div class="modal">
+    <button class="close" data-close="modal-edit-entry">&times;</button>
+    <h3>Edit Entry</h3>
+    <div class="field"><label>Scope</label>
+      <select id="edit-entry-scope"><option value="Ip">Ip</option><option value="Range">Range</option><option value="Country">Country</option></select>
+    </div>
+    <div class="field"><label>Value</label><input id="edit-entry-value" /></div>
+    <div class="field"><label>Comment</label><input id="edit-entry-comment" /></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close="modal-edit-entry">Cancel</button>
+      <button id="submit-edit-entry-btn" class="btn btn-primary">Save</button>
     </div>
   </div>
 </div>
@@ -303,14 +320,14 @@
 <!-- Modal: Generate Enrollment Key -->
 <div id="modal-key" class="modal-backdrop">
   <div class="modal">
-    <button class="close" onclick="closeModal('modal-key')">&times;</button>
+    <button class="close" data-close="modal-key">&times;</button>
     <h3>Generate Enrollment Key</h3>
     <div class="field"><label>Description</label><input id="key-desc" placeholder="e.g. datacenter-1 agents" /></div>
     <div class="field"><label>Tags (comma-separated)</label><input id="key-tags" placeholder="prod, dc1" /></div>
     <div class="field"><label>Max Uses (blank = unlimited)</label><input id="key-max" type="number" min="1" placeholder="unlimited" /></div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('modal-key')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitKey()">Generate</button>
+      <button class="btn btn-secondary" data-close="modal-key">Cancel</button>
+      <button id="submit-key-btn" class="btn btn-primary">Generate</button>
     </div>
   </div>
 </div>

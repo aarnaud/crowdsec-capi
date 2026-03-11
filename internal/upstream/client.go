@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
 type Client struct {
+	mu         sync.Mutex
 	baseURL    string
 	httpClient *http.Client
 	token      string
@@ -61,14 +63,18 @@ func (c *Client) Login(ctx context.Context) error {
 		return fmt.Errorf("decoding login response: %w", err)
 	}
 
+	c.mu.Lock()
 	c.token = result.Token
-	exp, _ := time.Parse(time.RFC3339, result.Expire)
-	c.tokenExp = exp
+	c.tokenExp, _ = time.Parse(time.RFC3339, result.Expire)
+	c.mu.Unlock()
 	return nil
 }
 
 func (c *Client) ensureToken(ctx context.Context) error {
-	if c.token != "" && time.Now().Before(c.tokenExp.Add(-5*time.Minute)) {
+	c.mu.Lock()
+	valid := c.token != "" && time.Now().Before(c.tokenExp.Add(-5*time.Minute))
+	c.mu.Unlock()
+	if valid {
 		return nil
 	}
 	return c.Login(ctx)

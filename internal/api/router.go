@@ -75,6 +75,7 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -129,13 +130,27 @@ func NewRouter(
 	r.With(rateLimitMiddleware(authLimiter)).Post("/v2/watchers", v2.RegisterHandler(pool, jwtMgr))
 	r.With(rateLimitMiddleware(authLimiter)).Post("/v2/watchers/login", v2.LoginHandler(pool, jwtMgr))
 
+	// Per-machine-ID rate limiter for signal batches: 60 per minute
+	signalLimiter := newIPRateLimiter(60, time.Minute)
+	signalRateLimitMiddleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			machineID := auth.GetMachineID(r.Context())
+			if !signalLimiter.allow(machineID) {
+				w.Header().Set("Content-Type", "application/json")
+				http.Error(w, `{"message":"too many requests"}`, http.StatusTooManyRequests)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+
 	// v2 authenticated endpoints
 	r.Group(func(r chi.Router) {
 		r.Use(auth.JWTMiddleware(jwtMgr))
 		r.Post("/v2/watchers/enroll", v2.EnrollHandler(pool))
 		r.Post("/v2/watchers/reset", v2.ResetPasswordHandler(pool))
 		r.Delete("/v2/watchers/self", v2.DeleteSelfHandler(pool))
-		r.Post("/v2/signals", v2.SignalsHandler(signalSvc))
+		r.With(signalRateLimitMiddleware).Post("/v2/signals", v2.SignalsHandler(signalSvc))
 		r.Get("/v2/decisions/stream", v2.DecisionStreamHandler(pool))
 		r.Post("/v2/decisions/sync", v2.DecisionSyncHandler(pool))
 		r.Post("/v2/metrics", v2.MetricsHandler(pool))
@@ -160,7 +175,10 @@ func NewRouter(
 		r.Get("/admin/allowlists", admin.ListAllowlistsHandler(pool))
 		r.Post("/admin/allowlists", admin.CreateAllowlistHandler(pool))
 		r.Delete("/admin/allowlists/{id}", admin.DeleteAllowlistHandler(pool))
+		r.Get("/admin/allowlists/{id}/entries", admin.ListAllowlistEntriesHandler(pool))
 		r.Post("/admin/allowlists/{id}/entries", admin.AddAllowlistEntryHandler(pool))
+		r.Put("/admin/allowlists/{id}/entries/{entry_id}", admin.UpdateAllowlistEntryHandler(pool))
+		r.Delete("/admin/allowlists/{id}/entries/{entry_id}", admin.DeleteAllowlistEntryHandler(pool))
 		r.Get("/admin/enrollment-keys", admin.ListEnrollmentKeysHandler(pool))
 		r.Post("/admin/enrollment-keys", admin.CreateEnrollmentKeyHandler(pool))
 		r.Delete("/admin/enrollment-keys/{id}", admin.DeleteEnrollmentKeyHandler(pool))

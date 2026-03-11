@@ -68,12 +68,13 @@ func DeleteMachine(ctx context.Context, db *pgxpool.Pool, machineID string) erro
 	return err
 }
 
-func ListMachines(ctx context.Context, db *pgxpool.Pool) ([]*models.Machine, error) {
+func ListMachines(ctx context.Context, db *pgxpool.Pool, limit, offset int) ([]*models.Machine, error) {
 	rows, err := db.Query(ctx, `
 		SELECT id, machine_id, password_hash, name, tags, scenarios,
 		       ip_address::text, status, enrolled_at, last_seen_at, created_at, updated_at
 		FROM machines ORDER BY created_at DESC
-	`)
+		LIMIT $1 OFFSET $2
+	`, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +96,12 @@ func ListMachines(ctx context.Context, db *pgxpool.Pool) ([]*models.Machine, err
 	return machines, rows.Err()
 }
 
+var validMachineStatuses = map[string]bool{"pending": true, "validated": true, "blocked": true}
+
 func UpdateMachineStatus(ctx context.Context, db *pgxpool.Pool, machineID, status string) error {
+	if !validMachineStatuses[status] {
+		return fmt.Errorf("invalid status %q: must be pending, validated, or blocked", status)
+	}
 	_, err := db.Exec(ctx, `
 		UPDATE machines SET status = $2, updated_at = NOW() WHERE machine_id = $1
 	`, machineID, status)

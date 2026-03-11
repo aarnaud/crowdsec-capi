@@ -163,6 +163,18 @@ func scanDecision(row scannable) (*models.Decision, error) {
 	return d, nil
 }
 
+// HardDeleteAgedDecisions permanently removes soft-deleted decisions older than the retention period.
+func HardDeleteAgedDecisions(ctx context.Context, db *pgxpool.Pool) (int64, error) {
+	tag, err := db.Exec(ctx, `
+		DELETE FROM decisions
+		WHERE is_deleted = TRUE AND deleted_at < NOW() - INTERVAL '90 days'
+	`)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 func SoftDeleteExpiredDecisions(ctx context.Context, db *pgxpool.Pool) (int64, error) {
 	tag, err := db.Exec(ctx, `
 		UPDATE decisions
@@ -175,7 +187,7 @@ func SoftDeleteExpiredDecisions(ctx context.Context, db *pgxpool.Pool) (int64, e
 	return tag.RowsAffected(), nil
 }
 
-func ListDecisions(ctx context.Context, db *pgxpool.Pool, includeDeleted bool) ([]models.Decision, error) {
+func ListDecisions(ctx context.Context, db *pgxpool.Pool, includeDeleted bool, limit, offset int) ([]models.Decision, error) {
 	query := `
 		SELECT id, uuid, origin, type, scope, value,
 		       EXTRACT(EPOCH FROM duration)::bigint,
@@ -185,7 +197,7 @@ func ListDecisions(ctx context.Context, db *pgxpool.Pool, includeDeleted bool) (
 	if !includeDeleted {
 		query += " WHERE is_deleted = FALSE AND expires_at > NOW()"
 	}
-	query += " ORDER BY created_at DESC"
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT %d OFFSET %d", limit, offset)
 
 	rows, err := db.Query(ctx, query)
 	if err != nil {

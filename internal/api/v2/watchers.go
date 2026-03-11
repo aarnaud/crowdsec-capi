@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"strings"
 
@@ -47,12 +48,14 @@ func RegisterHandler(pool dbPool, jwtMgr *auth.JWTManager) http.HandlerFunc {
 
 		ip := r.RemoteAddr
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			// Take only the first (client) IP; the header may contain a chain
-			ip = strings.TrimSpace(strings.SplitN(xff, ",", 2)[0])
+			candidate := strings.TrimSpace(strings.SplitN(xff, ",", 2)[0])
+			if net.ParseIP(candidate) != nil {
+				ip = candidate
+			}
 		}
 
 		if err := queries.CreateMachine(r.Context(), pool, req.MachineID, hash, ip); err != nil {
-			writeError(w, http.StatusConflict, "machine already exists")
+			writeError(w, http.StatusConflict, "registration failed")
 			return
 		}
 

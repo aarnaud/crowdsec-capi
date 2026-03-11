@@ -3,12 +3,6 @@
 let authHeader = null;
 let oidcEnabled = false;
 
-function savedCreds() {
-  const u = localStorage.getItem('admin_user');
-  const p = localStorage.getItem('admin_pass');
-  return (u && p) ? btoa(u + ':' + p) : null;
-}
-
 async function doLogin() {
   const u = document.getElementById('login-user').value.trim();
   const p = document.getElementById('login-pass').value;
@@ -16,8 +10,6 @@ async function doLogin() {
   try {
     const r = await fetch('/admin/stats', { headers: { Authorization: hdr, Accept: 'application/json' }, credentials: 'include' });
     if (!r.ok) throw new Error('bad credentials');
-    localStorage.setItem('admin_user', u);
-    localStorage.setItem('admin_pass', p);
     authHeader = hdr;
     document.getElementById('login-overlay').classList.remove('open');
     document.getElementById('header-user').textContent = u;
@@ -32,8 +24,6 @@ document.getElementById('login-pass').addEventListener('keydown', e => {
 });
 
 function logout() {
-  localStorage.removeItem('admin_user');
-  localStorage.removeItem('admin_pass');
   authHeader = null;
   if (oidcEnabled) {
     window.location.href = '/auth/logout';
@@ -210,6 +200,8 @@ async function renderWorldMap(countryData) {
 
 // ── Machines ──────────────────────────────────────────────────────────────────
 
+
+
 async function loadMachines() {
   const tbody = document.getElementById('machines-body');
   try {
@@ -231,9 +223,9 @@ async function loadMachines() {
         <td class="text-muted">${m.last_seen_at ? relTime(m.last_seen_at) : 'never'}</td>
         <td><div class="actions">
           ${m.status !== 'blocked'
-            ? `<button class="btn btn-warn btn-sm" onclick="blockMachine('${esc(m.machine_id)}')">Block</button>`
-            : `<button class="btn btn-secondary btn-sm" onclick="unblockMachine('${esc(m.machine_id)}')">Unblock</button>`}
-          <button class="btn btn-danger btn-sm" onclick="deleteMachine('${esc(m.machine_id)}')">Delete</button>
+            ? `<button class="btn btn-warn btn-sm" data-action="block" data-id="${esc(m.machine_id)}">Block</button>`
+            : `<button class="btn btn-secondary btn-sm" data-action="unblock" data-id="${esc(m.machine_id)}">Unblock</button>`}
+          <button class="btn btn-danger btn-sm" data-action="delete-machine" data-id="${esc(m.machine_id)}">Delete</button>
         </div></td>
       </tr>`;
     }).join('');
@@ -280,7 +272,7 @@ async function loadDecisions() {
         <td><span class="badge ${originClass}">${esc(d.origin)}</span></td>
         <td class="text-muted">${d.scenario ? esc(d.scenario) : '—'}</td>
         <td class="text-muted">${d.expires_at ? relTime(d.expires_at) : '—'}</td>
-        <td><button class="btn btn-danger btn-sm" onclick="deleteDecision('${esc(d.uuid)}')">Delete</button></td>
+        <td><button class="btn btn-danger btn-sm" data-action="delete-decision" data-uuid="${esc(d.uuid)}">Delete</button></td>
       </tr>`;
     }).join('');
   } catch (e) {
@@ -332,10 +324,10 @@ async function loadAllowlists() {
       <td>${l.label ? esc(l.label) : '<span class="text-muted">—</span>'}</td>
       <td class="text-muted">${l.description ? esc(l.description) : '—'}</td>
       <td><div class="actions">
-        <button class="btn btn-secondary btn-sm" onclick="selectAllowlist(${l.id}, '${esc(l.name)}')">Entries</button>
+        <button class="btn btn-secondary btn-sm" data-action="select-allowlist" data-id="${l.id}" data-name="${esc(l.name)}">Entries</button>
         ${l.managed
           ? '<span class="text-muted" title="Remove from allowlists file to delete" style="font-size:11px">file-managed</span>'
-          : `<button class="btn btn-danger btn-sm" onclick="deleteAllowlist(${l.id})">Delete</button>`}
+          : `<button class="btn btn-danger btn-sm" data-action="delete-allowlist" data-id="${l.id}">Delete</button>`}
       </div></td>
     </tr>`).join('');
   } catch (e) {
@@ -363,12 +355,30 @@ async function deleteAllowlist(id) {
   catch (e) { alert('Error: ' + e.message); }
 }
 
-function selectAllowlist(id, name) {
+async function selectAllowlist(id, name) {
   selectedAllowlistID = id;
   document.getElementById('allowlist-entries-name').textContent = name;
   document.getElementById('allowlist-entries-card').style.display = 'block';
-  document.getElementById('allowlist-entries-body').innerHTML =
-    '<tr><td colspan="3" class="empty text-muted">Use "Add Entry" to add IPs/ranges to this allowlist.</td></tr>';
+  const tbody = document.getElementById('allowlist-entries-body');
+  tbody.innerHTML = '<tr><td colspan="3" class="empty text-muted">Loading…</td></tr>';
+  try {
+    const entries = await api('GET', `/admin/allowlists/${id}/entries`) || [];
+    if (!entries.length) {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty text-muted">No entries yet. Use "+ Add Entry" to add IPs/ranges.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = entries.map(e => `<tr>
+      <td>${esc(e.scope)}</td>
+      <td class="mono">${esc(e.value)}</td>
+      <td class="text-muted">${e.comment ? esc(e.comment) : '—'}</td>
+      <td><div class="actions">
+        <button class="btn btn-secondary btn-sm" data-action="edit-entry" data-entry-id="${e.id}" data-scope="${esc(e.scope)}" data-value="${esc(e.value)}" data-comment="${e.comment ? esc(e.comment) : ''}">Edit</button>
+        <button class="btn btn-danger btn-sm" data-action="delete-entry" data-entry-id="${e.id}">Delete</button>
+      </div></td>
+    </tr>`).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="3" class="empty">Error: ${esc(err.message)}</td></tr>`;
+  }
 }
 
 function openAddEntry() {
@@ -378,10 +388,47 @@ function openAddEntry() {
   openModal('modal-entry');
 }
 
+let editingEntryID = null;
+
+function openEditEntry(entryID, scope, value, comment) {
+  editingEntryID = entryID;
+  document.getElementById('edit-entry-scope').value = scope;
+  document.getElementById('edit-entry-value').value = value;
+  document.getElementById('edit-entry-comment').value = comment;
+  openModal('modal-edit-entry');
+}
+
+async function submitEditEntry() {
+  if (!editingEntryID || !selectedAllowlistID) return;
+  const body = {
+    scope:   document.getElementById('edit-entry-scope').value,
+    value:   document.getElementById('edit-entry-value').value.trim(),
+    comment: document.getElementById('edit-entry-comment').value.trim(),
+  };
+  if (!body.value) { alert('Value is required'); return; }
+  try {
+    await api('PUT', `/admin/allowlists/${selectedAllowlistID}/entries/${editingEntryID}`, body);
+    closeModal('modal-edit-entry');
+    await selectAllowlist(selectedAllowlistID, document.getElementById('allowlist-entries-name').textContent);
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function deleteEntry(entryID) {
+  if (!confirm('Delete this entry?')) return;
+  try {
+    await api('DELETE', `/admin/allowlists/${selectedAllowlistID}/entries/${entryID}`);
+    await selectAllowlist(selectedAllowlistID, document.getElementById('allowlist-entries-name').textContent);
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
 async function submitEntry() {
   const body = { scope: document.getElementById('entry-scope').value, value: document.getElementById('entry-value').value.trim(), comment: document.getElementById('entry-comment').value.trim() };
   if (!body.value) { alert('Value is required'); return; }
-  try { await api('POST', `/admin/allowlists/${selectedAllowlistID}/entries`, body); closeModal('modal-entry'); alert('Entry added.'); }
+  try {
+    await api('POST', `/admin/allowlists/${selectedAllowlistID}/entries`, body);
+    closeModal('modal-entry');
+    await selectAllowlist(selectedAllowlistID, document.getElementById('allowlist-entries-name').textContent);
+  }
   catch (e) { alert('Error: ' + e.message); }
 }
 
@@ -402,7 +449,7 @@ async function loadEnrollmentKeys() {
         <td>${tags || '<span class="text-muted">—</span>'}</td>
         <td class="text-muted">${uses}</td>
         <td class="text-muted">${k.expires_at ? (expired ? '<span class="badge badge-red">expired</span>' : relTime(k.expires_at)) : '∞'}</td>
-        <td><button class="btn btn-danger btn-sm" onclick="deleteKey(${k.id})">Revoke</button></td>
+        <td><button class="btn btn-danger btn-sm" data-action="delete-key" data-id="${k.id}">Revoke</button></td>
       </tr>`;
     }).join('');
   } catch (e) { tbody.innerHTML = `<tr><td colspan="6" class="empty">Error: ${esc(e.message)}</td></tr>`; }
@@ -452,8 +499,13 @@ async function loadUpstream() {
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
+// Close modal on backdrop click or [data-close] buttons
 document.querySelectorAll('.modal-backdrop').forEach(m => {
   m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+});
+document.addEventListener('click', e => {
+  const btn = e.target.closest('[data-close]');
+  if (btn) closeModal(btn.dataset.close);
 });
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
@@ -472,6 +524,63 @@ function relTime(iso) {
   if (abs < 86400000) return (past ? '' : 'in ') + Math.round(abs/3600000) + 'h'  + (past ? ' ago' : '');
   return d.toLocaleDateString();
 }
+
+// ── Static button wiring ──────────────────────────────────────────────────────
+
+document.getElementById('login-btn').addEventListener('click', doLogin);
+document.getElementById('logout-btn').addEventListener('click', logout);
+document.getElementById('refresh-dashboard-btn').addEventListener('click', loadDashboard);
+document.getElementById('add-decision-btn').addEventListener('click', openAddDecision);
+document.getElementById('add-allowlist-btn').addEventListener('click', openAddAllowlist);
+document.getElementById('add-entry-btn').addEventListener('click', openAddEntry);
+document.getElementById('add-key-btn').addEventListener('click', openAddKey);
+document.getElementById('submit-decision-btn').addEventListener('click', submitDecision);
+document.getElementById('submit-allowlist-btn').addEventListener('click', submitAllowlist);
+document.getElementById('submit-entry-btn').addEventListener('click', submitEntry);
+document.getElementById('submit-edit-entry-btn').addEventListener('click', submitEditEntry);
+document.getElementById('submit-key-btn').addEventListener('click', submitKey);
+
+// Nav buttons (data-page attribute)
+document.querySelectorAll('nav button[data-page]').forEach(btn => {
+  btn.addEventListener('click', () => showPage(btn.dataset.page));
+});
+
+// Event delegation for dynamically generated table rows
+document.getElementById('machines-body').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  if (btn.dataset.action === 'block')          blockMachine(id);
+  else if (btn.dataset.action === 'unblock')   unblockMachine(id);
+  else if (btn.dataset.action === 'delete-machine') deleteMachine(id);
+});
+
+document.getElementById('decisions-body').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-action="delete-decision"]');
+  if (btn) deleteDecision(btn.dataset.uuid);
+});
+
+document.getElementById('allowlists-body').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  if (btn.dataset.action === 'select-allowlist') selectAllowlist(Number(btn.dataset.id), btn.dataset.name);
+  else if (btn.dataset.action === 'delete-allowlist') deleteAllowlist(Number(btn.dataset.id));
+});
+
+document.getElementById('enrollment-body').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-action="delete-key"]');
+  if (btn) deleteKey(Number(btn.dataset.id));
+});
+
+document.getElementById('allowlist-entries-body').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const entryID = Number(btn.dataset.entryId);
+  if (btn.dataset.action === 'edit-entry')
+    openEditEntry(entryID, btn.dataset.scope, btn.dataset.value, btn.dataset.comment);
+  else if (btn.dataset.action === 'delete-entry')
+    deleteEntry(entryID);
+});
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
@@ -501,14 +610,8 @@ async function boot() {
     return;
   }
 
-  // Basic auth mode
-  const saved = savedCreds();
-  if (saved) {
-    authHeader = 'Basic ' + saved;
-    document.getElementById('login-overlay').classList.remove('open');
-    document.getElementById('header-user').textContent = localStorage.getItem('admin_user');
-    loadPage('dashboard');
-  }
+  // Basic auth mode: require credentials on every page load (no localStorage persistence)
+  document.getElementById('login-overlay').classList.add('open');
 }
 
 boot();

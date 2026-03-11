@@ -94,8 +94,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Generate admin password if not set
-	if cfg.Admin.Password == "" {
+	// Generate admin password if not set and OIDC is not the sole auth method
+	if cfg.Admin.Password == "" && !cfg.Auth.OIDC.Enabled {
 		cfg.Admin.Password = generateSecret(16)
 		log.Warn().
 			Str("username", cfg.Admin.Username).
@@ -173,6 +173,12 @@ func expiredDecisionCleaner(ctx context.Context, pool *pgxpool.Pool) {
 				log.Error().Err(err).Msg("cleaning expired decisions")
 			} else if n > 0 {
 				log.Info().Int64("count", n).Msg("soft-deleted expired decisions")
+			}
+			n, err = queries.HardDeleteAgedDecisions(ctx, pool)
+			if err != nil {
+				log.Error().Err(err).Msg("hard-deleting aged decisions")
+			} else if n > 0 {
+				log.Info().Int64("count", n).Msg("hard-deleted aged soft-deleted decisions")
 			}
 		}
 	}

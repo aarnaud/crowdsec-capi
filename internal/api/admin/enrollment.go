@@ -40,6 +40,10 @@ func ListEnrollmentKeysHandler(pool *pgxpool.Pool) http.HandlerFunc {
 				writeError(w, http.StatusInternalServerError, "internal error")
 				return
 			}
+			// Truncate the key so the full value is only visible at creation time
+			if len(k.Key) > 8 {
+				k.Key = k.Key[:8] + "..."
+			}
 			keys = append(keys, k)
 		}
 		if keys == nil {
@@ -61,6 +65,14 @@ func CreateEnrollmentKeyHandler(pool *pgxpool.Pool) http.HandlerFunc {
 		var req CreateEnrollmentKeyRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if req.MaxUses != nil && *req.MaxUses < 1 {
+			writeError(w, http.StatusBadRequest, "max_uses must be ≥ 1")
+			return
+		}
+		if req.ExpiresAt != nil && !req.ExpiresAt.After(time.Now()) {
+			writeError(w, http.StatusBadRequest, "expires_at must be in the future")
 			return
 		}
 

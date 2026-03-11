@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/rs/zerolog/log"
@@ -22,6 +23,10 @@ func SignalsHandler(svc *service.SignalService) http.HandlerFunc {
 		}
 
 		if err := svc.ProcessSignals(r.Context(), machineID, signals); err != nil {
+			if errors.Is(err, service.ErrMachineBlocked) {
+				writeError(w, http.StatusForbidden, "machine is blocked")
+				return
+			}
 			log.Error().Err(err).Str("machine_id", machineID).Msg("processing signals")
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
