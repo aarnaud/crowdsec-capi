@@ -148,20 +148,28 @@ type SignalSource struct {
 	IP        string  `json:"ip"`
 	Range     string  `json:"range"`
 	AsName    string  `json:"as_name"`
-	AsNumber  int     `json:"as_number"`
-	Country   string  `json:"country"`
+	AsNumber  string  `json:"as_number"`
+	CN        string  `json:"cn"`
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
 }
 
+type SignalContext struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
 type SignalDecision struct {
-	UUID     string `json:"uuid"`
-	Scenario string `json:"scenario"`
-	Scope    string `json:"scope"`
-	Value    string `json:"value"`
-	Type     string `json:"type"`
-	Duration string `json:"duration"`
-	Origin   string `json:"origin"`
+	UUID      string `json:"uuid"`
+	Scenario  string `json:"scenario"`
+	Scope     string `json:"scope"`
+	Value     string `json:"value"`
+	Type      string `json:"type"`
+	Duration  string `json:"duration"`
+	Origin    string `json:"origin"`
+	Simulated bool   `json:"simulated"`
+	Until     string `json:"until"`
+	ID        int    `json:"id"`
 }
 
 type SignalItem struct {
@@ -170,15 +178,17 @@ type SignalItem struct {
 	Scenario        string            `json:"scenario"`
 	ScenarioHash    string            `json:"scenario_hash"`
 	ScenarioVersion string            `json:"scenario_version"`
+	ScenarioTrust   string            `json:"scenario_trust"`
 	Source          SignalSource      `json:"source"`
 	Decisions       []SignalDecision  `json:"decisions"`
+	Context         []SignalContext   `json:"context"`
 	Labels          map[string]string `json:"labels"`
 	StartAt         string            `json:"start_at"`
 	StopAt          string            `json:"stop_at"`
+	AlertID         int               `json:"alert_id"`
 	AlertCount      int               `json:"alert_count"`
 	CreatedAt       string            `json:"created_at"`
 	Message         string            `json:"message"`
-	MachineIDPrefix string            `json:"machine_id_prefix"`
 }
 
 type DecisionWire struct {

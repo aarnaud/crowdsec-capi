@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -84,9 +85,10 @@ func (s *SignalService) ProcessSignals(ctx context.Context, machineID string, si
 		}
 
 		var asNumber *int
-		if sig.Source.AsNumber != 0 {
-			n := sig.Source.AsNumber
-			asNumber = &n
+		if sig.Source.AsNumber != "" {
+			if n, err := strconv.Atoi(sig.Source.AsNumber); err == nil {
+				asNumber = &n
+			}
 		}
 		var lat, lon *float64
 		if sig.Source.Latitude != 0 {
@@ -107,7 +109,7 @@ func (s *SignalService) ProcessSignals(ctx context.Context, machineID string, si
 			SourceRange:     sourceRange,
 			SourceAsName:    nilStr(sig.Source.AsName),
 			SourceAsNumber:  asNumber,
-			SourceCountry:   nilStr(sig.Source.Country),
+			SourceCountry:   nilStr(sig.Source.CN),
 			SourceLatitude:  lat,
 			SourceLongitude: lon,
 			Labels:          labelsJSON,
