@@ -2,6 +2,7 @@ package api
 
 import (
 	"crypto/subtle"
+	"io/fs"
 	"net/http"
 	"strings"
 	"sync"
@@ -98,10 +99,15 @@ func NewRouter(
 	r.Use(middleware.RequestSize(4 << 20))
 
 	// Static dashboard
-	staticFS := http.FS(web.Static)
-	r.Handle("/ui/*", http.StripPrefix("/ui", http.FileServer(staticFS)))
-	r.Get("/ui", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/ui/static/index.html", http.StatusFound)
+	subFS, err := fs.Sub(web.Static, "static")
+	if err != nil {
+		log.Fatal().Err(err)
+	}
+
+	r.Handle("/ui/*", http.StripPrefix("/ui/", http.FileServer(http.FS(subFS))))
+	r.Handle("/ui/", http.StripPrefix("/ui/", http.FileServer(http.FS(subFS))))
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ui/", http.StatusFound)
 	})
 
 	// Health
