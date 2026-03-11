@@ -80,7 +80,7 @@ type LogConfig struct {
 }
 
 func Load(cfgFile string) (*Config, error) {
-	v := viper.New()
+	v := viper.NewWithOptions(viper.ExperimentalBindStruct())
 
 	// Defaults
 	v.SetDefault("server.listen", "0.0.0.0:8080")
