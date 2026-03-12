@@ -119,17 +119,18 @@ func V3DecisionStreamHandler(pool dbPool) http.HandlerFunc {
 		baseURL := scheme + "://" + r.Host
 		allowlistLinks := make([]models.AllowlistLinkWire, 0, len(allLists))
 		for _, a := range allLists {
-			link := models.AllowlistLinkWire{
-				ID:        fmt.Sprintf("%d", a.ID),
-				Name:      a.Name,
-				CreatedAt: a.CreatedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
-				UpdatedAt: a.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
-				URL:       baseURL + "/v3/allowlists/" + a.Name + "?with_content=true",
-			}
+			desc := ""
 			if a.Description != nil {
-				link.Description = *a.Description
+				desc = *a.Description
 			}
-			allowlistLinks = append(allowlistLinks, link)
+			allowlistLinks = append(allowlistLinks, models.AllowlistLinkWire{
+				ID:          fmt.Sprintf("%d", a.ID),
+				Name:        a.Name,
+				Description: desc,
+				CreatedAt:   a.CreatedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
+				UpdatedAt:   a.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
+				URL:         baseURL + "/v3/allowlists/" + a.Name + "?with_content=true",
+			})
 		}
 
 		writeJSON(w, http.StatusOK, models.V3DecisionStreamResponse{
@@ -137,7 +138,7 @@ func V3DecisionStreamHandler(pool dbPool) http.HandlerFunc {
 			Deleted: deletedList,
 			Links: &models.V3DecisionStreamLinks{
 				Allowlists: allowlistLinks,
-				Blocklists: []interface{}{},
+				Blocklists: []models.BlocklistLink{},
 			},
 		})
 	}

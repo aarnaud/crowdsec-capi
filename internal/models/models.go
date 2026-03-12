@@ -201,6 +201,7 @@ type DecisionWire struct {
 	Scenario  string `json:"scenario"`
 	ID        int64  `json:"id"`
 	Simulated bool   `json:"simulated"`
+	Until     string `json:"until,omitempty"`
 }
 
 type DecisionStreamResponse struct {
@@ -230,10 +231,19 @@ type AllowlistResponseWire struct {
 type AllowlistLinkWire struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	CreatedAt   string `json:"created_at,omitempty"`
-	UpdatedAt   string `json:"updated_at,omitempty"`
+	Description string `json:"description"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 	URL         string `json:"url"`
+}
+
+// BlocklistLink matches the BlocklistLink schema in the swagger.
+type BlocklistLink struct {
+	Name        string `json:"name"`
+	URL         string `json:"url"`
+	Remediation string `json:"remediation"`
+	Scope       string `json:"scope"`
+	Duration    string `json:"duration"`
 }
 
 type BulkCheckAllowlistRequest struct {
@@ -269,7 +279,7 @@ type V3DecisionDeletedGroup struct {
 
 type V3DecisionStreamLinks struct {
 	Allowlists []AllowlistLinkWire `json:"allowlists"`
-	Blocklists []interface{}       `json:"blocklists"`
+	Blocklists []BlocklistLink     `json:"blocklists"`
 }
 
 type V3DecisionStreamResponse struct {
