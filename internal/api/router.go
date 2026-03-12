@@ -249,6 +249,7 @@ func NewRouter(
 		r.Get("/admin/enrollment-keys", admin.ListEnrollmentKeysHandler(pool))
 		r.Post("/admin/enrollment-keys", admin.CreateEnrollmentKeyHandler(pool))
 		r.Delete("/admin/enrollment-keys/{id}", admin.DeleteEnrollmentKeyHandler(pool))
+		r.Get("/admin/signals", admin.ListSignalsHandler(pool))
 		r.Get("/admin/upstream", admin.UpstreamStatusHandler(pool))
 		r.Get("/admin/stats", admin.StatsHandler(pool))
 	})

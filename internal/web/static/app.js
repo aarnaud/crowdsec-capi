@@ -1,3 +1,45 @@
+// ── Country code → ECharts world map name mapping ─────────────────────────────
+const COUNTRY_NAMES = {
+  AF:'Afghanistan',AG:'Antigua and Barb.',AL:'Albania',AM:'Armenia',AO:'Angola',
+  AR:'Argentina',AT:'Austria',AU:'Australia',AZ:'Azerbaijan',BA:'Bosnia and Herz.',
+  BB:'Barbados',BD:'Bangladesh',BE:'Belgium',BF:'Burkina Faso',BG:'Bulgaria',
+  BH:'Bahrain',BI:'Burundi',BJ:'Benin',BN:'Brunei',BO:'Bolivia',BR:'Brazil',
+  BS:'Bahamas',BT:'Bhutan',BW:'Botswana',BY:'Belarus',BZ:'Belize',
+  CA:'Canada',CD:'Dem. Rep. Congo',CF:'Central African Rep.',CG:'Congo',
+  CH:'Switzerland',CI:"Côte d'Ivoire",CL:'Chile',CM:'Cameroon',CN:'China',
+  CO:'Colombia',CR:'Costa Rica',CU:'Cuba',CV:'Cape Verde',CY:'Cyprus',
+  CZ:'Czech Rep.',DE:'Germany',DJ:'Djibouti',DK:'Denmark',DM:'Dominica',
+  DO:'Dominican Rep.',DZ:'Algeria',EC:'Ecuador',EE:'Estonia',EG:'Egypt',
+  ER:'Eritrea',ES:'Spain',ET:'Ethiopia',FI:'Finland',FJ:'Fiji',
+  FR:'France',GA:'Gabon',GB:'United Kingdom',GE:'Georgia',GH:'Ghana',
+  GM:'Gambia',GN:'Guinea',GQ:'Eq. Guinea',GR:'Greece',GT:'Guatemala',
+  GW:'Guinea-Bissau',GY:'Guyana',HN:'Honduras',HR:'Croatia',HT:'Haiti',
+  HU:'Hungary',ID:'Indonesia',IE:'Ireland',IL:'Israel',IN:'India',
+  IQ:'Iraq',IR:'Iran',IS:'Iceland',IT:'Italy',JM:'Jamaica',JO:'Jordan',
+  JP:'Japan',KE:'Kenya',KG:'Kyrgyzstan',KH:'Cambodia',KI:'Kiribati',
+  KM:'Comoros',KP:'Dem. Rep. Korea',KR:'Korea',KW:'Kuwait',KZ:'Kazakhstan',
+  LA:'Lao PDR',LB:'Lebanon',LI:'Liechtenstein',LK:'Sri Lanka',LR:'Liberia',
+  LS:'Lesotho',LT:'Lithuania',LU:'Luxembourg',LV:'Latvia',LY:'Libya',
+  MA:'Morocco',MD:'Moldova',ME:'Montenegro',MG:'Madagascar',MK:'Macedonia',
+  ML:'Mali',MM:'Myanmar',MN:'Mongolia',MR:'Mauritania',MT:'Malta',
+  MU:'Mauritius',MV:'Maldives',MW:'Malawi',MX:'Mexico',MY:'Malaysia',
+  MZ:'Mozambique',NA:'Namibia',NE:'Niger',NG:'Nigeria',NI:'Nicaragua',
+  NL:'Netherlands',NO:'Norway',NP:'Nepal',NR:'Nauru',NZ:'New Zealand',
+  OM:'Oman',PA:'Panama',PE:'Peru',PG:'Papua New Guinea',PH:'Philippines',
+  PK:'Pakistan',PL:'Poland',PS:'Palestine',PT:'Portugal',PW:'Palau',
+  PY:'Paraguay',QA:'Qatar',RO:'Romania',RS:'Serbia',RU:'Russia',RW:'Rwanda',
+  SA:'Saudi Arabia',SB:'Solomon Is.',SC:'Seychelles',SD:'Sudan',SE:'Sweden',
+  SG:'Singapore',SH:'Saint Helena',SI:'Slovenia',SK:'Slovakia',SL:'Sierra Leone',
+  SM:'San Marino',SN:'Senegal',SO:'Somalia',SR:'Suriname',SS:'S. Sudan',
+  ST:'São Tomé and Principe',SV:'El Salvador',SY:'Syria',SZ:'Swaziland',
+  TD:'Chad',TG:'Togo',TH:'Thailand',TJ:'Tajikistan',TL:'Timor-Leste',
+  TM:'Turkmenistan',TN:'Tunisia',TO:'Tonga',TR:'Turkey',TT:'Trinidad and Tobago',
+  TW:'Taiwan',TZ:'Tanzania',UA:'Ukraine',UG:'Uganda',US:'United States',
+  UY:'Uruguay',UZ:'Uzbekistan',VA:'Vatican',VC:'St. Vin. and Gren.',
+  VE:'Venezuela',VN:'Vietnam',VU:'Vanuatu',WS:'Samoa',YE:'Yemen',
+  ZA:'South Africa',ZM:'Zambia',ZW:'Zimbabwe',
+};
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 let authHeader = null;
@@ -55,7 +97,7 @@ async function api(method, path, body) {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 
-const pages = ['dashboard', 'machines', 'decisions', 'allowlists', 'enrollment', 'upstream'];
+const pages = ['dashboard', 'machines', 'decisions', 'allowlists', 'enrollment', 'signals', 'upstream'];
 
 function showPage(name) {
   pages.forEach(p => {
@@ -73,6 +115,7 @@ function loadPage(name) {
   if (name === 'decisions')  loadDecisions();
   if (name === 'allowlists') loadAllowlists();
   if (name === 'enrollment') loadEnrollmentKeys();
+  if (name === 'signals')    loadSignals();
   if (name === 'upstream')   loadUpstream();
 }
 
@@ -160,7 +203,9 @@ async function renderWorldMap(countryData) {
   mapInstance = echarts.init(el);
 
   const maxCount = countryData.reduce((m, d) => Math.max(m, d.count), 1);
-  const mapData  = countryData.map(d => ({ name: d.country, value: d.count }));
+  const mapData  = countryData
+    .filter(d => COUNTRY_NAMES[d.country.toUpperCase()])
+    .map(d => ({ name: COUNTRY_NAMES[d.country.toUpperCase()], value: d.count }));
 
   mapInstance.setOption({
     backgroundColor: '#fff',
@@ -277,6 +322,32 @@ async function loadDecisions() {
     }).join('');
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="7" class="empty">Error: ${esc(e.message)}</td></tr>`;
+  }
+}
+
+async function loadSignals() {
+  const tbody = document.getElementById('signals-body');
+  try {
+    const signals = await api('GET', '/admin/signals') || [];
+    if (!signals.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty">No signals recorded.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = signals.map(s => {
+      const ip = s.source_ip || s.source_range || '—';
+      return `<tr>
+        <td class="text-muted">${new Date(s.created_at).toLocaleString()}</td>
+        <td class="mono">${esc(s.machine_id)}</td>
+        <td>${esc(s.scenario)}</td>
+        <td><strong>${esc(ip)}</strong></td>
+        <td class="text-muted">${s.source_country ? esc(s.source_country) : '—'}</td>
+        <td class="text-muted">${s.source_as_number != null ? s.source_as_number : '—'}</td>
+        <td class="text-muted">${s.source_as_name ? esc(s.source_as_name) : '—'}</td>
+        <td class="text-muted">${s.alert_count}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty">Error: ${esc(e.message)}</td></tr>`;
   }
 }
 
