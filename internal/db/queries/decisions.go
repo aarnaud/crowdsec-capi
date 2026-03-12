@@ -187,25 +187,34 @@ func SoftDeleteExpiredDecisions(ctx context.Context, db *pgxpool.Pool) (int64, e
 	return tag.RowsAffected(), nil
 }
 
-func ListDecisions(ctx context.Context, db *pgxpool.Pool, includeDeleted bool, limit, offset int) ([]models.Decision, error) {
+func ListDecisions(ctx context.Context, db *pgxpool.Pool, includeDeleted bool, search string, limit, offset int) ([]models.Decision, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	query := `
+	args := []any{}
+	var conditions string
+	if !includeDeleted && search != "" {
+		args = append(args, "%"+search+"%")
+		conditions = "WHERE is_deleted = FALSE AND expires_at > NOW() AND (value ILIKE $1 OR COALESCE(scenario, '') ILIKE $1 OR origin ILIKE $1)"
+	} else if !includeDeleted {
+		conditions = "WHERE is_deleted = FALSE AND expires_at > NOW()"
+	} else if search != "" {
+		args = append(args, "%"+search+"%")
+		conditions = "WHERE (value ILIKE $1 OR COALESCE(scenario, '') ILIKE $1 OR origin ILIKE $1)"
+	}
+	query := fmt.Sprintf(`
 		SELECT id, uuid, origin, type, scope, value,
 		       EXTRACT(EPOCH FROM duration)::bigint,
 		       scenario, source_machine_id, simulated, is_deleted, expires_at, created_at, updated_at, deleted_at
 		FROM decisions
-	`
-	if !includeDeleted {
-		query += " WHERE is_deleted = FALSE AND expires_at > NOW()"
-	}
-	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT %d OFFSET %d", limit, offset)
+		%s
+		ORDER BY created_at DESC LIMIT %d OFFSET %d
+	`, conditions, limit, offset)
 
-	rows, err := db.Query(ctx, query)
+	rows, err := db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

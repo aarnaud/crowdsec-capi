@@ -40,6 +40,41 @@ const COUNTRY_NAMES = {
   ZA:'South Africa',ZM:'Zambia',ZW:'Zimbabwe',
 };
 
+// ── Page state (pagination + search) ─────────────────────────────────────────
+
+const pageState = {
+  machines:  { offset: 0, limit: 50, search: '' },
+  decisions: { offset: 0, limit: 50, search: '' },
+  signals:   { offset: 0, limit: 50, search: '' },
+};
+
+function debounce(fn, delay) {
+  let timer;
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), delay); };
+}
+
+function renderPagination(containerId, state, itemCount, reloadFn) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const hasPrev = state.offset > 0;
+  const hasNext = itemCount === state.limit;
+  if (!hasPrev && !hasNext) { el.innerHTML = ''; return; }
+  const page = Math.floor(state.offset / state.limit) + 1;
+  el.innerHTML = `
+    <button class="btn btn-secondary btn-sm" data-dir="prev" ${hasPrev ? '' : 'disabled'}>← Prev</button>
+    <span class="page-info">Page ${page}</span>
+    <button class="btn btn-secondary btn-sm" data-dir="next" ${hasNext ? '' : 'disabled'}>Next →</button>
+  `;
+  el.querySelector('[data-dir="prev"]')?.addEventListener('click', () => {
+    state.offset = Math.max(0, state.offset - state.limit);
+    reloadFn();
+  });
+  el.querySelector('[data-dir="next"]')?.addEventListener('click', () => {
+    state.offset += state.limit;
+    reloadFn();
+  });
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 let authHeader = null;
@@ -106,6 +141,7 @@ function showPage(name) {
   document.querySelectorAll('nav button').forEach((btn, i) => {
     btn.classList.toggle('active', pages[i] === name);
   });
+  if (pageState[name]) pageState[name].offset = 0;
   loadPage(name);
 }
 
@@ -249,11 +285,18 @@ async function renderWorldMap(countryData) {
 
 async function loadMachines() {
   const tbody = document.getElementById('machines-body');
+  const state = pageState.machines;
+  const params = new URLSearchParams({ limit: state.limit, offset: state.offset });
+  if (state.search) params.set('search', state.search);
   try {
-    const machines = await api('GET', '/admin/machines') || [];
-    document.getElementById('machines-count').textContent = machines.length + ' machine(s)';
+    const machines = await api('GET', '/admin/machines?' + params) || [];
+    const from = state.offset + 1;
+    const to   = state.offset + machines.length;
+    document.getElementById('machines-count').textContent =
+      machines.length ? `${from}–${to}` : '0';
     if (!machines.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="empty">No machines registered yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">No machines found.</td></tr>';
+      renderPagination('machines-pagination', state, 0, loadMachines);
       return;
     }
     tbody.innerHTML = machines.map(m => {
@@ -274,6 +317,7 @@ async function loadMachines() {
         </div></td>
       </tr>`;
     }).join('');
+    renderPagination('machines-pagination', state, machines.length, loadMachines);
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="6" class="empty">Error: ${esc(e.message)}</td></tr>`;
   }
@@ -301,10 +345,14 @@ async function deleteMachine(id) {
 
 async function loadDecisions() {
   const tbody = document.getElementById('decisions-body');
+  const state = pageState.decisions;
+  const params = new URLSearchParams({ limit: state.limit, offset: state.offset });
+  if (state.search) params.set('search', state.search);
   try {
-    const decisions = await api('GET', '/admin/decisions') || [];
+    const decisions = await api('GET', '/admin/decisions?' + params) || [];
     if (!decisions.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty">No active decisions.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">No decisions found.</td></tr>';
+      renderPagination('decisions-pagination', state, 0, loadDecisions);
       return;
     }
     tbody.innerHTML = decisions.map(d => {
@@ -320,6 +368,7 @@ async function loadDecisions() {
         <td><button class="btn btn-danger btn-sm" data-action="delete-decision" data-uuid="${esc(d.uuid)}">Delete</button></td>
       </tr>`;
     }).join('');
+    renderPagination('decisions-pagination', state, decisions.length, loadDecisions);
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="7" class="empty">Error: ${esc(e.message)}</td></tr>`;
   }
@@ -327,10 +376,14 @@ async function loadDecisions() {
 
 async function loadSignals() {
   const tbody = document.getElementById('signals-body');
+  const state = pageState.signals;
+  const params = new URLSearchParams({ limit: state.limit, offset: state.offset });
+  if (state.search) params.set('search', state.search);
   try {
-    const signals = await api('GET', '/admin/signals') || [];
+    const signals = await api('GET', '/admin/signals?' + params) || [];
     if (!signals.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty">No signals recorded.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty">No signals found.</td></tr>';
+      renderPagination('signals-pagination', state, 0, loadSignals);
       return;
     }
     tbody.innerHTML = signals.map(s => {
@@ -346,6 +399,7 @@ async function loadSignals() {
         <td class="text-muted">${s.alert_count}</td>
       </tr>`;
     }).join('');
+    renderPagination('signals-pagination', state, signals.length, loadSignals);
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="8" class="empty">Error: ${esc(e.message)}</td></tr>`;
   }
@@ -610,6 +664,25 @@ document.getElementById('submit-allowlist-btn').addEventListener('click', submit
 document.getElementById('submit-entry-btn').addEventListener('click', submitEntry);
 document.getElementById('submit-edit-entry-btn').addEventListener('click', submitEditEntry);
 document.getElementById('submit-key-btn').addEventListener('click', submitKey);
+
+// Search inputs (debounced)
+document.getElementById('machines-search').addEventListener('input', debounce(e => {
+  pageState.machines.search = e.target.value.trim();
+  pageState.machines.offset = 0;
+  loadMachines();
+}, 300));
+
+document.getElementById('decisions-search').addEventListener('input', debounce(e => {
+  pageState.decisions.search = e.target.value.trim();
+  pageState.decisions.offset = 0;
+  loadDecisions();
+}, 300));
+
+document.getElementById('signals-search').addEventListener('input', debounce(e => {
+  pageState.signals.search = e.target.value.trim();
+  pageState.signals.offset = 0;
+  loadSignals();
+}, 300));
 
 // Nav buttons (data-page attribute)
 document.querySelectorAll('nav button[data-page]').forEach(btn => {

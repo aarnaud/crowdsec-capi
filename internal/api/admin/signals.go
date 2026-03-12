@@ -10,7 +10,8 @@ import (
 func ListSignalsHandler(pool dbPool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		limit, offset := parsePagination(r)
-		signals, err := queries.ListSignals(r.Context(), pool, limit, offset)
+		search := r.URL.Query().Get("search")
+		signals, err := queries.ListSignals(r.Context(), pool, search, limit, offset)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return

@@ -3,6 +3,7 @@ package queries
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -47,14 +48,20 @@ func nilPtrStr(s *string) string {
 	return *s
 }
 
-func ListSignals(ctx context.Context, db *pgxpool.Pool, limit, offset int) ([]models.Signal, error) {
+func ListSignals(ctx context.Context, db *pgxpool.Pool, search string, limit, offset int) ([]models.Signal, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	rows, err := db.Query(ctx, `
+	args := []any{}
+	where := ""
+	if search != "" {
+		args = append(args, "%"+search+"%")
+		where = "WHERE (machine_id ILIKE $1 OR scenario ILIKE $1 OR COALESCE(source_ip::text, '') ILIKE $1)"
+	}
+	rows, err := db.Query(ctx, fmt.Sprintf(`
 		SELECT id, uuid, machine_id, scenario, scenario_hash, scenario_version,
 		       source_scope, source_value,
 		       COALESCE(source_ip::text, ''), COALESCE(source_range::text, ''),
@@ -62,9 +69,10 @@ func ListSignals(ctx context.Context, db *pgxpool.Pool, limit, offset int) ([]mo
 		       source_country, source_latitude, source_longitude,
 		       labels, start_at, stop_at, alert_count, created_at
 		FROM signals
+		%s
 		ORDER BY created_at DESC
-		LIMIT $1 OFFSET $2
-	`, limit, offset)
+		LIMIT %d OFFSET %d
+	`, where, limit, offset), args...)
 	if err != nil {
 		return nil, err
 	}

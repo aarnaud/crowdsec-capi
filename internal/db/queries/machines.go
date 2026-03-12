@@ -68,13 +68,19 @@ func DeleteMachine(ctx context.Context, db *pgxpool.Pool, machineID string) erro
 	return err
 }
 
-func ListMachines(ctx context.Context, db *pgxpool.Pool, limit, offset int) ([]*models.Machine, error) {
-	rows, err := db.Query(ctx, `
+func ListMachines(ctx context.Context, db *pgxpool.Pool, search string, limit, offset int) ([]*models.Machine, error) {
+	args := []any{}
+	where := ""
+	if search != "" {
+		args = append(args, "%"+search+"%")
+		where = "WHERE (machine_id ILIKE $1 OR COALESCE(name, '') ILIKE $1)"
+	}
+	rows, err := db.Query(ctx, fmt.Sprintf(`
 		SELECT id, machine_id, password_hash, name, tags, scenarios,
 		       ip_address::text, status, enrolled_at, last_seen_at, created_at, updated_at
-		FROM machines ORDER BY created_at DESC
-		LIMIT $1 OFFSET $2
-	`, limit, offset)
+		FROM machines %s ORDER BY created_at DESC
+		LIMIT %d OFFSET %d
+	`, where, limit, offset), args...)
 	if err != nil {
 		return nil, err
 	}

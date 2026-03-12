@@ -36,7 +36,8 @@ func parsePagination(r *http.Request) (limit, offset int) {
 func ListMachinesHandler(pool dbPool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		limit, offset := parsePagination(r)
-		machines, err := queries.ListMachines(r.Context(), pool, limit, offset)
+		search := r.URL.Query().Get("search")
+		machines, err := queries.ListMachines(r.Context(), pool, search, limit, offset)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
