@@ -311,6 +311,10 @@ func isJSONRequest(r *http.Request) bool {
 
 func chiZerologLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		log.Info().
 			Str("method", r.Method).
 			Str("path", r.URL.Path).
