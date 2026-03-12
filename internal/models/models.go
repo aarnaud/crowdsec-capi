@@ -212,6 +212,7 @@ type DecisionStreamResponse struct {
 // Agent-facing allowlist wire types
 
 type AllowlistItemWire struct {
+	Scope       string `json:"scope"`
 	Value       string `json:"value"`
 	Description string `json:"description,omitempty"`
 	CreatedAt   string `json:"created_at,omitempty"`

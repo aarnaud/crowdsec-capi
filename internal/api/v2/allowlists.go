@@ -17,6 +17,7 @@ func allowlistToWire(a models.Allowlist, entries []models.AllowlistEntry) models
 	items := make([]models.AllowlistItemWire, 0, len(entries))
 	for _, e := range entries {
 		item := models.AllowlistItemWire{
+			Scope:     e.Scope,
 			Value:     e.Value,
 			CreatedAt: e.CreatedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
 		}
