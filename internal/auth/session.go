@@ -45,7 +45,7 @@ func (m *SessionManager) Verify(tokenStr string) (*SessionClaims, error) {
 			return nil, fmt.Errorf("unexpected signing method")
 		}
 		return m.secret, nil
-	})
+	}, jwt.WithIssuer("crowdsec-local-capi-admin"))
 	if err != nil {
 		return nil, err
 	}

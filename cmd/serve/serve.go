@@ -94,13 +94,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Generate admin password if not set and OIDC is not the sole auth method
-	if cfg.Admin.Password == "" && !cfg.Auth.OIDC.Enabled {
+	// Always generate an admin password if not set — Basic Auth remains active
+	// even when OIDC is enabled, so an empty password would allow unauthenticated access.
+	if cfg.Admin.Password == "" {
 		cfg.Admin.Password = generateSecret(16)
-		log.Warn().
-			Str("username", cfg.Admin.Username).
-			Str("password", cfg.Admin.Password).
-			Msg("no admin password configured — generated a random one (set CAPI_ADMIN_PASSWORD to persist)")
+		if !cfg.Auth.OIDC.Enabled {
+			log.Warn().
+				Str("username", cfg.Admin.Username).
+				Str("password", cfg.Admin.Password).
+				Msg("no admin password configured — generated a random one (set CAPI_ADMIN_PASSWORD to persist)")
+		}
 	}
 
 	// Get or create a persistent JWT secret stored in the database
