@@ -198,7 +198,7 @@ func NewRouter(
 
 	// authenticated endpoints
 	r.Group(func(r chi.Router) {
-		r.Use(auth.JWTMiddleware(jwtMgr))
+		r.Use(auth.JWTMiddleware(jwtMgr, pool))
 
 		// shared routes (same handler for v2 and v3)
 		for _, p := range []string{"/v2", "/v3"} {
