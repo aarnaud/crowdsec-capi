@@ -122,7 +122,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Start upstream syncer if enabled
 	if cfg.Upstream.Enabled && cfg.Upstream.MachineID != "" {
 		client := upstream.NewClient(cfg.Upstream.BaseURL, cfg.Upstream.MachineID, cfg.Upstream.Password)
-		syncer := upstream.NewSyncer(client, pool, cfg.Upstream.SyncInterval)
+		syncer := upstream.NewSyncer(client, pool, cfg.Upstream.SyncInterval, cfg.Upstream.EnrollmentKey)
 		go syncer.Run(ctx)
 	}
 

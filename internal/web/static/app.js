@@ -610,9 +610,18 @@ async function loadUpstream() {
   const el = document.getElementById('upstream-content');
   try {
     const s = await api('GET', '/admin/upstream');
+    const nextSync = s.next_sync_at
+      ? (new Date(s.next_sync_at) > new Date() ? relTime(s.next_sync_at) : 'soon')
+      : '<span class="text-muted">—</span>';
+    const enrolledBadge = s.enrolled_at
+      ? `<span class="badge badge-green">enrolled</span> <span class="text-muted">${new Date(s.enrolled_at).toLocaleString()}</span>`
+      : '<span class="badge badge-yellow">not enrolled</span>';
     el.innerHTML = `
       <table style="width:auto">
-        <tr><th style="padding-right:32px">Last sync</th><td>${s.last_sync_at ? new Date(s.last_sync_at).toLocaleString() : '<span class="text-muted">never</span>'}</td></tr>
+        <tr><th style="padding-right:32px">Console enrollment</th><td>${enrolledBadge}</td></tr>
+        <tr><th>Last sync</th><td>${s.last_sync_at ? new Date(s.last_sync_at).toLocaleString() : '<span class="text-muted">never</span>'}</td></tr>
+        <tr><th>Last startup sync</th><td>${s.last_startup_at ? new Date(s.last_startup_at).toLocaleString() : '<span class="text-muted">never</span>'}</td></tr>
+        <tr><th>Next sync (earliest)</th><td>${nextSync}</td></tr>
         <tr><th>Machine ID</th><td class="mono">${s.machine_id || '<span class="text-muted">not configured</span>'}</td></tr>
         <tr><th>Upstream decisions</th><td>${s.decision_count ?? 0}</td></tr>
       </table>`;

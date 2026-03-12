@@ -55,12 +55,13 @@ type DatabaseConfig struct {
 }
 
 type UpstreamConfig struct {
-	Enabled      bool          `mapstructure:"enabled"`
-	BaseURL      string        `mapstructure:"base_url"`
-	MachineID    string        `mapstructure:"machine_id"`
-	Password     string        `mapstructure:"password"`
-	SyncInterval time.Duration `mapstructure:"sync_interval"`
-	PushSignals  bool          `mapstructure:"push_signals"`
+	Enabled       bool          `mapstructure:"enabled"`
+	BaseURL       string        `mapstructure:"base_url"`
+	MachineID     string        `mapstructure:"machine_id"`
+	Password      string        `mapstructure:"password"`
+	SyncInterval  time.Duration `mapstructure:"sync_interval"`
+	PushSignals   bool          `mapstructure:"push_signals"`
+	EnrollmentKey string        `mapstructure:"enrollment_key"`
 }
 
 type DecisionsConfig struct {
@@ -87,7 +88,7 @@ func Load(cfgFile string) (*Config, error) {
 	v.SetDefault("server.jwt_ttl", "24h")
 	v.SetDefault("admin.username", "admin")
 	v.SetDefault("upstream.base_url", "https://api.crowdsec.net")
-	v.SetDefault("upstream.sync_interval", "1h")
+	v.SetDefault("upstream.sync_interval", "2h")
 	v.SetDefault("decisions.default_duration", "24h")
 	v.SetDefault("decisions.sources.local_signals", true)
 	v.SetDefault("decisions.sources.upstream_capi", true)

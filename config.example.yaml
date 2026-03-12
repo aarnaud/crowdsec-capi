@@ -31,7 +31,7 @@ upstream:
   machine_id: ""
   password: ""
   sync_interval: "1h"
-  push_signals: false
+  push_signals: true
 
 decisions:
   default_duration: "24h"
