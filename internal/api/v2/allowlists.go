@@ -7,62 +7,61 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-openapi/strfmt"
 	"github.com/jackc/pgx/v5"
+
+	csmodels "github.com/crowdsecurity/crowdsec/pkg/models"
 
 	"github.com/aarnaud/crowdsec-central-api/internal/db/queries"
 	"github.com/aarnaud/crowdsec-central-api/internal/models"
 )
 
-func allowlistToWire(a models.Allowlist, entries []models.AllowlistEntry) models.AllowlistResponseWire {
-	items := make([]models.AllowlistItemWire, 0, len(entries))
+func allowlistToWire(a models.Allowlist, entries []models.AllowlistEntry) *csmodels.GetAllowlistResponse {
+	resp := &csmodels.GetAllowlistResponse{
+		AllowlistID:    fmt.Sprintf("%d", a.ID),
+		ConsoleManaged: a.Managed,
+		Name:           a.Name,
+		CreatedAt:      strfmt.DateTime(a.CreatedAt),
+		UpdatedAt:      strfmt.DateTime(a.UpdatedAt),
+		Items:          make([]*csmodels.AllowlistItem, 0, len(entries)),
+	}
+	if a.Description != nil {
+		resp.Description = *a.Description
+	}
 	for _, e := range entries {
-		item := models.AllowlistItemWire{
-			Scope:     e.Scope,
+		if e.Value == "" {
+			continue
+		}
+		item := &csmodels.AllowlistItem{
 			Value:     e.Value,
-			CreatedAt: e.CreatedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
+			CreatedAt: strfmt.DateTime(e.CreatedAt),
 		}
 		if e.Comment != nil {
 			item.Description = *e.Comment
 		}
 		if e.ExpiresAt != nil {
-			item.Expiration = e.ExpiresAt.UTC().Format("2006-01-02T15:04:05.000Z")
+			item.Expiration = strfmt.DateTime(*e.ExpiresAt)
 		}
-		items = append(items, item)
+		resp.Items = append(resp.Items, item)
 	}
-	w := models.AllowlistResponseWire{
-		AllowlistID:    fmt.Sprintf("%d", a.ID),
-		ConsoleManaged: a.Managed,
-		Name:           a.Name,
-		CreatedAt:      a.CreatedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
-		UpdatedAt:      a.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
-		Items:          items,
-	}
-	if a.Description != nil {
-		w.Description = *a.Description
-	}
-	return w
+	return resp
 }
 
-// AllowlistsGetHandler handles GET /v3/allowlists[?with_content=true]
+// AllowlistsGetHandler handles GET /v3/allowlists — always returns items.
 func AllowlistsGetHandler(pool dbPool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		withContent := r.URL.Query().Get("with_content") == "true"
-
 		lists, err := queries.GetAllowlists(r.Context(), pool)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 
-		result := make([]models.AllowlistResponseWire, 0, len(lists))
+		result := make([]*csmodels.GetAllowlistResponse, 0, len(lists))
 		for _, a := range lists {
-			var entries []models.AllowlistEntry
-			if withContent {
-				entries, err = queries.GetAllowlistEntries(r.Context(), pool, a.ID)
-				if err != nil {
-					writeError(w, http.StatusInternalServerError, "internal error")
-					return
-				}
+			entries, err := queries.GetAllowlistEntries(r.Context(), pool, a.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
 			}
 			result = append(result, allowlistToWire(a, entries))
 		}
@@ -77,11 +76,11 @@ func AllowlistsHeadHandler(pool dbPool) http.HandlerFunc {
 	}
 }
 
-// AllowlistGetByNameHandler handles GET /v3/allowlists/{name}[?with_content=true]
+// AllowlistGetByNameHandler handles GET /v3/allowlists/{name}.
+// Returns plain text with one AllowlistItem value per line, as expected by the CrowdSec LAPI.
 func AllowlistGetByNameHandler(pool dbPool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := chi.URLParam(r, "name")
-		withContent := r.URL.Query().Get("with_content") == "true"
 
 		a, err := queries.GetAllowlistByName(r.Context(), pool, name)
 		if err != nil {
@@ -93,15 +92,21 @@ func AllowlistGetByNameHandler(pool dbPool) http.HandlerFunc {
 			return
 		}
 
-		var entries []models.AllowlistEntry
-		if withContent {
-			entries, err = queries.GetAllowlistEntries(r.Context(), pool, a.ID)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, "internal error")
-				return
-			}
+		entries, err := queries.GetAllowlistEntries(r.Context(), pool, a.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
-		writeJSON(w, http.StatusOK, allowlistToWire(*a, entries))
+
+		resp := allowlistToWire(*a, entries)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		for _, item := range resp.Items {
+			jsonData, err := item.MarshalBinary()
+			if err != nil {
+				continue
+			}
+			fmt.Fprintln(w, string(jsonData))
+		}
 	}
 }
 

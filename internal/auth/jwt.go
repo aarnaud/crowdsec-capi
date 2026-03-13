@@ -1,7 +1,11 @@
 package auth
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -37,6 +41,28 @@ func (m *JWTManager) Sign(machineID string) (string, time.Time, error) {
 		return "", time.Time{}, fmt.Errorf("signing token: %w", err)
 	}
 	return signed, exp, nil
+}
+
+// SignURL returns a short-lived HMAC-signed token for unauthenticated allowlist downloads.
+// The token encodes the allowlist name and expiry so it cannot be reused or forged.
+func (m *JWTManager) SignURL(name string, ttl time.Duration) (token string, exp int64) {
+	exp = time.Now().Add(ttl).Unix()
+	msg := name + ":" + strconv.FormatInt(exp, 10)
+	mac := hmac.New(sha256.New, m.secret)
+	mac.Write([]byte(msg))
+	return hex.EncodeToString(mac.Sum(nil)), exp
+}
+
+// ValidateSignedURL checks an allowlist download token.
+func (m *JWTManager) ValidateSignedURL(name, token string, exp int64) bool {
+	if time.Now().Unix() > exp {
+		return false
+	}
+	msg := name + ":" + strconv.FormatInt(exp, 10)
+	mac := hmac.New(sha256.New, m.secret)
+	mac.Write([]byte(msg))
+	expected := hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(token), []byte(expected))
 }
 
 func (m *JWTManager) Verify(tokenStr string) (*MachineClaims, error) {

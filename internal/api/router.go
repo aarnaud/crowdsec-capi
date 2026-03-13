@@ -182,6 +182,9 @@ func NewRouter(
 	r.With(rateLimitMiddleware(authLimiter)).Post("/v3/watchers", v2.RegisterHandler(pool, jwtMgr))
 	r.With(rateLimitMiddleware(authLimiter)).Post("/v3/watchers/login", v2.V3LoginHandler(pool, jwtMgr))
 
+	// Public signed-URL allowlist download (no JWT required — validated by HMAC token)
+	r.Get("/v3/allowlists/{name}/download", v2.AllowlistDownloadHandler(pool, jwtMgr))
+
 	// Per-machine-ID rate limiter for signal batches: 60 per minute
 	signalLimiter := newIPRateLimiter(60, time.Minute)
 	signalRateLimitMiddleware := func(next http.Handler) http.Handler {
@@ -222,7 +225,7 @@ func NewRouter(
 
 		// version-specific decision stream handlers
 		r.Get("/v2/decisions/stream", v2.DecisionStreamHandler(pool))
-		r.Get("/v3/decisions/stream", v2.V3DecisionStreamHandler(pool))
+		r.Get("/v3/decisions/stream", v2.V3DecisionStreamHandler(pool, jwtMgr))
 
 		// PAPI (Push API) — same JWT auth, uses /v1/ prefix
 		r.Get("/v1/permissions", v2.PAPIPermissionsHandler())
@@ -309,17 +312,29 @@ func isJSONRequest(r *http.Request) bool {
 		strings.Contains(r.Header.Get("Accept"), "application/json")
 }
 
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rec *statusRecorder) WriteHeader(code int) {
+	rec.status = code
+	rec.ResponseWriter.WriteHeader(code)
+}
+
 func chiZerologLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
 			next.ServeHTTP(w, r)
 			return
 		}
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
 		log.Info().
 			Str("method", r.Method).
 			Str("path", r.URL.Path).
 			Str("remote_addr", r.RemoteAddr).
+			Int("status", rec.status).
 			Msg("request")
-		next.ServeHTTP(w, r)
 	})
 }

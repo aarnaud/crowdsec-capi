@@ -3,7 +3,10 @@ package v2
 import (
 	"fmt"
 	"net/http"
+	"strconv"
+	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/aarnaud/crowdsec-central-api/internal/auth"
@@ -59,7 +62,7 @@ func toWireDecisions(decs []models.Decision) []models.DecisionWire {
 	return result
 }
 
-func V3DecisionStreamHandler(pool dbPool) http.HandlerFunc {
+func V3DecisionStreamHandler(pool dbPool, jwtMgr *auth.JWTManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		machineID := auth.GetMachineID(r.Context())
 		startup := r.URL.Query().Get("startup") == "true"
@@ -129,7 +132,7 @@ func V3DecisionStreamHandler(pool dbPool) http.HandlerFunc {
 				Description: desc,
 				CreatedAt:   a.CreatedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
 				UpdatedAt:   a.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
-				URL:         baseURL + "/v3/allowlists/" + a.Name + "?with_content=true",
+				URL:         allowlistDownloadURL(baseURL, a.Name, jwtMgr),
 			})
 		}
 
@@ -141,6 +144,49 @@ func V3DecisionStreamHandler(pool dbPool) http.HandlerFunc {
 				Blocklists: []models.BlocklistLink{},
 			},
 		})
+	}
+}
+
+const allowlistURLTTL = time.Minute * 5
+
+func allowlistDownloadURL(baseURL, name string, jwtMgr *auth.JWTManager) string {
+	token, exp := jwtMgr.SignURL(name, allowlistURLTTL)
+	return fmt.Sprintf("%s/v3/allowlists/%s/download?exp=%d&token=%s", baseURL, name, exp, token)
+}
+
+// AllowlistDownloadHandler handles GET /v3/allowlists/{name}/download (public, signed URL).
+func AllowlistDownloadHandler(pool dbPool, jwtMgr *auth.JWTManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := chi.URLParam(r, "name")
+
+		expStr := r.URL.Query().Get("exp")
+		token := r.URL.Query().Get("token")
+		exp, err := strconv.ParseInt(expStr, 10, 64)
+		if err != nil || !jwtMgr.ValidateSignedURL(name, token, exp) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+
+		a, err := queries.GetAllowlistByName(r.Context(), pool, name)
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		entries, err := queries.GetAllowlistEntries(r.Context(), pool, a.ID)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		resp := allowlistToWire(*a, entries)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		for _, item := range resp.Items {
+			jsonData, err := item.MarshalBinary()
+			if err != nil {
+				continue
+			}
+			fmt.Fprintln(w, string(jsonData))
+		}
 	}
 }
 
